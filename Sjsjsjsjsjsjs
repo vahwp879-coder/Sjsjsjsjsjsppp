@@ -1,0 +1,2567 @@
+--[[
+    ╔═══════════════════════════════════════════════════╗
+    ║   SECRIT--SCRIPT  |  CRIMINAL HUB V7 ║
+    ║   San Diego Roleplay - Xeno Executor               ║
+    ║   Build: Purple Crosshair + Blue FOV Precision    ║
+    ╚═══════════════════════════════════════════════════╝
+]]
+
+local Players            = game:GetService("Players")
+local RunService         = game:GetService("RunService")
+local UserInputService   = game:GetService("UserInputService")
+local TweenService       = game:GetService("TweenService")
+local CollectionService  = game:GetService("CollectionService")
+local CoreGui            = game:GetService("CoreGui")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local Workspace          = game:GetService("Workspace")
+local Camera             = Workspace.CurrentCamera
+local LocalPlayer        = Players.LocalPlayer
+
+-- Safe Modules
+local Client = nil
+pcall(function()
+    Client = require(ReplicatedStorage.SharedModules.Pronghorn.Remotes).Client
+end)
+
+local MouseController = nil
+pcall(function()
+    MouseController = require(ReplicatedStorage.ClientModules.MouseController)
+end)
+
+-- Logo & Crosshair Asset Discovery
+local LogoAssetId = nil
+local CrosshairAssetId = nil
+pcall(function()
+    if getcustomasset then
+        local logoPaths = {
+            "secrit_logo.png",
+            "secrit_script_logo.jpg",
+            "Pro Script Dumper/[136020512003847] [🎃 EVENT] San Diego Roleplay/secrit_logo.png",
+            "Pro Script Dumper/[136020512003847] [ðŸŽƒ EVENT] San Diego Roleplay/secrit_logo.png",
+            "Pro Script Dumper/[136020512003847] [🎃 EVENT] San Diego Roleplay/secrit_script_logo.jpg",
+            "Pro Script Dumper/[136020512003847] [ðŸŽƒ EVENT] San Diego Roleplay/secrit_script_logo.jpg"
+        }
+        for _, p in ipairs(logoPaths) do
+            if isfile and isfile(p) then
+                local asset = getcustomasset(p)
+                if asset and asset ~= "" then
+                    LogoAssetId = asset
+                    break
+                end
+            end
+        end
+
+        local b64_crosshair = "iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOCAYAAAAfSC3RAAAAUElEQVR4nGNgwA3+QzFWwIRLU4DmfwYQxqUZl0aCgP4aWaA0zkDAIc/ICAsIUsCG64zkO5URh1MYYK4AmY5NH8yPjIT8xIAGhlA84gN4EzkAoAIUBN/R65YAAAAASUVORK5CYII="
+        if writefile and isfile and not isfile("crosshair.png") then
+            pcall(function()
+                if crypt and crypt.base64decode then
+                    writefile("crosshair.png", crypt.base64decode(b64_crosshair))
+                elseif base64_decode then
+                    writefile("crosshair.png", base64_decode(b64_crosshair))
+                else
+                    local b = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+                    local clean = string.gsub(b64_crosshair, "[^" .. b .. "=]", "")
+                    local raw = (clean:gsub(".", function(x)
+                        if x == "=" then return "" end
+                        local r, f = "", (b:find(x) - 1)
+                        for i = 6, 1, -1 do r = r .. (f % 2^i - f % 2^(i - 1) > 0 and "1" or "0") end
+                        return r
+                    end):gsub("%d%d%d%d%d%d%d%d", function(x)
+                        if #x ~= 8 then return "" end
+                        local c = 0
+                        for i = 1, 8 do c = c + (x:sub(i, i) == "1" and 2^(8 - i) or 0) end
+                        return string.char(c)
+                    end))
+                    writefile("crosshair.png", raw)
+                end
+            end)
+        end
+
+        local crosshairPaths = {
+            "crosshair.png",
+            "Pro Script Dumper/[136020512003847] [🎃 EVENT] San Diego Roleplay/crosshair.png",
+            "Pro Script Dumper/[136020512003847] [ðŸŽƒ EVENT] San Diego Roleplay/crosshair.png"
+        }
+        for _, p in ipairs(crosshairPaths) do
+            if isfile and isfile(p) then
+                local asset = getcustomasset(p)
+                if asset and asset ~= "" then
+                    CrosshairAssetId = asset
+                    break
+                end
+            end
+        end
+    end
+end)
+
+-- ══════════════════════════════════════════════════════
+-- CONFIGURATION
+-- ══════════════════════════════════════════════════════
+local CFG = {
+    -- Aimbot & Combat
+    AimbotEnabled     = true,
+    AimbotMode        = "Camera Lock", -- Pure Camera Lock on Target Head/Bone
+    AimbotTrigger     = "Shoot Or Aim", -- "Shoot Or Aim", "Shoot Only", "Aim Only", "Always Active"
+    AimbotFOV         = 160, -- Wide responsive FOV circle for instant effortless targeting
+    AimbotSmooth      = 6, -- Fast smooth camera tracking
+    SnapOnShoot       = true, -- Instant Camera Snap when Shooting (اضرب وخلاص الإيم يقفل فوراً)
+    AimbotMaxDist     = 1200,
+    AimbotBone        = "Head", -- Always Headshots
+    AimVerticalOffset = -0.30, -- Micro-adjustment: lowers aimpoint from hair/hat to face center
+    AimbotPrediction  = false, -- Off by default for hitscan laser precision
+    AimbotStickyLock  = true,
+    AimbotWallCheck   = false, -- Disabled by default for instant responsive lock
+    AimbotAutoSwitch  = true, -- Auto-Switch upon elimination
+    AimbotTargetBots  = true,
+    AimbotTeamCheck   = false, -- Target ANYONE in FOV (Everyone is targetable!)
+    AimbotWantedOnly  = false, -- Disabled by default so all players in circle can be targeted
+    ShowFOVCircle     = true,
+    FOVCircleColor    = Color3.fromRGB(0, 170, 255), -- Electric Blue FOV Circle
+
+    -- Custom Crosshair
+    CustomCrosshair   = true, -- Custom Purple Plus Crosshair
+    CrosshairSize     = 16,
+
+    -- Combat & Gun Modifications
+    NoRecoil          = true, -- Zero gun recoil / camera kick
+    ZeroSpread        = true, -- 100% laser accuracy
+    FastReload        = true, -- Quick Reload for all weapons
+    ReloadSpeed       = 1.35, -- Multiplier (Calibrated to match server-side reload cooldown)
+    Wallbang          = true, -- Shoot Through Walls & Obstacles (اختراق الجدران)
+    NoCameraBob       = true, -- Eliminate Camera Shake / Bobbing when Sprinting & Moving
+    Triggerbot        = false, -- Auto-fire
+    TriggerbotDelay   = 30, -- ms debounce
+    SpinBot           = false, -- Anti-Aim spin
+    SpinSpeed         = 35,
+
+    -- ESP & Chams
+    ESPEnabled        = true,
+    ESPMaxDist        = 1500,
+    ESPWantedOnly     = false,
+    ESPTeamCheck      = true,
+    ChamsESP          = true, -- Highlight through walls
+    BoxESP            = false, -- Clean aesthetic like screenshot
+    HealthBarESP      = true, -- Horizontal top green bar
+    NamesESP          = true,
+    DistanceESP       = true,
+    SkeletonESP       = false,
+    TracersESP        = false,
+    ESPTargetBots     = true,
+
+    AntiHandcuffs     = true,
+    AntiTase          = false,
+    SpeedBoost        = false,
+    SpeedValue        = 22,
+
+    -- Theme Colors
+    AccentColor       = Color3.fromRGB(168, 85, 247),
+    EnemyColor        = Color3.fromRGB(244, 63, 94),
+    PoliceColor       = Color3.fromRGB(59, 130, 246),
+    BotColor          = Color3.fromRGB(245, 158, 11),
+    FriendlyColor     = Color3.fromRGB(16, 185, 129),
+}
+
+-- ══════════════════════════════════════════════════════
+-- STATE
+-- ══════════════════════════════════════════════════════
+local guiOpen             = false
+local lockedTarget        = nil
+local currentSilentTarget = nil
+local fovCircle           = nil
+local crosshairFrame      = nil
+local chVOut, chHOut, chVCore, chHCore = nil, nil, nil, nil
+local espCache            = {}
+local introComplete       = false
+local selectedTab         = "Aimbot"
+local ScreenGui, MainFrame, uiScale
+
+-- ══════════════════════════════════════════════════════
+-- MULTI-BONE RESOLVER (R15, R6 & Custom Avatars)
+-- ══════════════════════════════════════════════════════
+local function GetAimbotPart(char, preferred)
+    if not char then return nil end
+    preferred = preferred or CFG.AimbotBone or "Head"
+
+    if preferred == "Head" or preferred == "الرأس" or preferred == "الراس" then
+        return char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+    elseif preferred == "Upper Body" or preferred == "UpperTorso" or preferred == "Torso" or preferred == "الصدر" or preferred == "الابر بدي" or preferred == "الأبر بدي" or preferred == "الجسم العلوي" then
+        return char:FindFirstChild("UpperTorso")
+            or char:FindFirstChild("Torso")
+            or char:FindFirstChild("LowerTorso")
+            or char:FindFirstChild("HumanoidRootPart")
+            or char:FindFirstChild("Head")
+    elseif preferred == "HumanoidRootPart" or preferred == "Pelvis" or preferred == "Root" or preferred == "الوسط" or preferred == "الجذع" then
+        return char:FindFirstChild("HumanoidRootPart")
+            or char:FindFirstChild("LowerTorso")
+            or char:FindFirstChild("Torso")
+    elseif preferred == "Arms" or preferred == "الأذرع" or preferred == "الأيدي" or preferred == "الذراع" or preferred == "اليدين" then
+        return char:FindFirstChild("RightUpperArm")
+            or char:FindFirstChild("LeftUpperArm")
+            or char:FindFirstChild("Right Arm")
+            or char:FindFirstChild("Left Arm")
+            or char:FindFirstChild("UpperTorso")
+            or char:FindFirstChild("Head")
+    elseif preferred == "Legs" or preferred == "الأرجل" or preferred == "القدمين" or preferred == "الرجل" then
+        return char:FindFirstChild("RightUpperLeg")
+            or char:FindFirstChild("LeftUpperLeg")
+            or char:FindFirstChild("Right Leg")
+            or char:FindFirstChild("Left Leg")
+            or char:FindFirstChild("HumanoidRootPart")
+    elseif preferred == "Random" or preferred == "عشوائي" then
+        local parts = {}
+        for _, n in ipairs({"Head", "UpperTorso", "Torso", "RightUpperArm", "LeftUpperArm", "HumanoidRootPart"}) do
+            local p = char:FindFirstChild(n)
+            if p and p:IsA("BasePart") then table.insert(parts, p) end
+        end
+        if #parts > 0 then return parts[math.random(1, #parts)] end
+    else
+        -- Case-insensitive / substring fallback
+        local pLower = tostring(preferred):lower()
+        if pLower:find("arm") or pLower:find("ذراع") or pLower:find("يد") then
+            return char:FindFirstChild("RightUpperArm")
+                or char:FindFirstChild("LeftUpperArm")
+                or char:FindFirstChild("Right Arm")
+                or char:FindFirstChild("Left Arm")
+                or char:FindFirstChild("UpperTorso")
+        elseif pLower:find("leg") or pLower:find("رجل") or pLower:find("قدم") then
+            return char:FindFirstChild("RightUpperLeg")
+                or char:FindFirstChild("LeftUpperLeg")
+                or char:FindFirstChild("Right Leg")
+                or char:FindFirstChild("Left Leg")
+                or char:FindFirstChild("HumanoidRootPart")
+        elseif pLower:find("upper") or pLower:find("torso") or pLower:find("body") or pLower:find("صدر") or pLower:find("بدي") then
+            return char:FindFirstChild("UpperTorso")
+                or char:FindFirstChild("Torso")
+                or char:FindFirstChild("LowerTorso")
+                or char:FindFirstChild("HumanoidRootPart")
+        elseif pLower:find("root") or pLower:find("pelvis") or pLower:find("وسط") then
+            return char:FindFirstChild("HumanoidRootPart")
+                or char:FindFirstChild("LowerTorso")
+                or char:FindFirstChild("Torso")
+        elseif pLower:find("random") or pLower:find("عشوائي") then
+            local parts = {}
+            for _, n in ipairs({"Head", "UpperTorso", "Torso", "RightUpperArm", "LeftUpperArm", "HumanoidRootPart"}) do
+                local p = char:FindFirstChild(n)
+                if p and p:IsA("BasePart") then table.insert(parts, p) end
+            end
+            if #parts > 0 then return parts[math.random(1, #parts)] end
+        end
+    end
+
+    return char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+end
+
+-- Helper to get exact sub-bone aim coordinate
+local function GetAimPosition(tgt)
+    if not tgt or not tgt.char then return nil end
+    -- Dynamically resolve bone on EVERY call according to current CFG.AimbotBone
+    local bone = GetAimbotPart(tgt.char, CFG.AimbotBone) or tgt.bone
+    if not bone then return nil end
+    tgt.bone = bone -- Keep tgt synchronized with user dropdown choice
+
+    local pos = bone.Position
+    if bone.Name == "Head" then
+        -- Vertical micro-adjustment ONLY when targeting Head (lowers aimpoint to center of face)
+        pos = pos + Vector3.new(0, CFG.AimVerticalOffset or -0.30, 0)
+    end
+
+    if CFG.AimbotPrediction and tgt.char then
+        local root = tgt.char:FindFirstChild("HumanoidRootPart")
+        if root then
+            local vel = root.AssemblyLinearVelocity
+            pos = pos + Vector3.new(vel.X, 0, vel.Z) * 0.020
+        end
+    end
+    return pos, bone
+end
+
+-- ══════════════════════════════════════════════════════
+-- UTILITIES & TARGETING
+-- ══════════════════════════════════════════════════════
+local function IsAlive(player)
+    local c = player and player.Character
+    if not c then return false end
+    local h = c:FindFirstChildOfClass("Humanoid")
+    return h and h.Health > 0 and c:FindFirstChild("HumanoidRootPart") ~= nil
+end
+
+local function GetRole(player)
+    local c = player and player.Character
+    if not c then return "Civilian" end
+    if CollectionService:HasTag(c, "Authority") then return "Authority" end
+    if CollectionService:HasTag(c, "Criminal") then return "Criminal" end
+    local t = player.Team
+    if t then
+        local n = t.Name:lower()
+        if n:find("police") or n:find("cop") or n:find("sheriff") or n:find("swat") or n:find("authority") then
+            return "Authority"
+        end
+        if n:find("criminal") or n:find("prisoner") then return "Criminal" end
+    end
+    return "Civilian"
+end
+
+local function GetPlayerWantedStars(plr)
+    if not plr then return 0, 0 end
+    local val = plr:GetAttribute("WantedLevel")
+    if typeof(val) ~= "number" or val <= 0 then
+        if plr.Character then
+            val = plr.Character:GetAttribute("WantedLevel")
+        end
+    end
+    if typeof(val) == "number" and val > 0 then
+        local stars = math.clamp(math.ceil(val / 200), 1, 5)
+        return stars, val
+    end
+    if plr.Character and CollectionService:HasTag(plr.Character, "WantedStars") then
+        return 1, 100
+    end
+    return 0, 0
+end
+
+local function ShouldTarget(player)
+    if player == LocalPlayer or not IsAlive(player) then return false end
+    local r = GetRole(player)
+    if CFG.AimbotTeamCheck then
+        if LocalPlayer.Team and player.Team and player.Team == LocalPlayer.Team then
+            return false -- Protect fellow teammates in the same team
+        end
+    end
+    return true
+end
+
+local function ShouldShowESP(player)
+    if player == LocalPlayer or not IsAlive(player) then return false end
+    local r = GetRole(player)
+    if CFG.ESPTeamCheck then
+        if LocalPlayer.Team and player.Team and player.Team == LocalPlayer.Team then
+            return false -- Hide teammates in the same team
+        end
+    end
+    return true
+end
+
+local function W2S(pos)
+    local v, vis = Camera:WorldToViewportPoint(pos)
+    return Vector2.new(v.X, v.Y), vis, v.Z
+end
+
+local function GetHP(char)
+    local h = char and char:FindFirstChildOfClass("Humanoid")
+    return h and h.Health or 100, h and h.MaxHealth or 100
+end
+
+-- Smart Line-of-Sight Check (Wall Check)
+local function IsVisibleThroughWall(part)
+    if not part then return false end
+    local origin = Camera.CFrame.Position
+    local dir = part.Position - origin
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local list = {}
+    if LocalPlayer.Character then table.insert(list, LocalPlayer.Character) end
+    if part.Parent then table.insert(list, part.Parent) end
+    params.FilterDescendantsInstances = list
+    return Workspace:Raycast(origin, dir, params) == nil
+end
+
+-- ══════════════════════════════════════════════════════
+-- NO RECOIL & ZERO SPREAD ENGINE
+-- ══════════════════════════════════════════════════════
+local originalGunStats = {}
+local dummySpring = {
+    Impulse = function() end,
+    Position = 0,
+    Target = 0,
+    Speed = 0,
+    Damper = 1,
+    TimeSkip = function() end
+}
+
+local fireAnimIds = {}
+pcall(function()
+    local GunConfig = require(ReplicatedStorage.SharedModules.Configs.GunConfig)
+    for _, g in pairs(GunConfig) do
+        if g and g.Animations then
+            if g.Animations.ThirdPerson and g.Animations.ThirdPerson.Fire then
+                fireAnimIds[tostring(g.Animations.ThirdPerson.Fire)] = true
+            end
+            if g.Animations.FirstPerson then
+                if g.Animations.FirstPerson.Fire then
+                    fireAnimIds[tostring(g.Animations.FirstPerson.Fire)] = true
+                end
+                if g.Animations.FirstPerson.ADSfire then
+                    fireAnimIds[tostring(g.Animations.FirstPerson.ADSfire)] = true
+                end
+            end
+        end
+    end
+end)
+
+local function ApplyNoRecoil(enabled)
+    pcall(function()
+        local GunConfig = require(ReplicatedStorage.SharedModules.Configs.GunConfig)
+        for name, data in pairs(GunConfig) do
+            if data and data.Stats then
+                if not originalGunStats[name] then
+                    originalGunStats[name] = {
+                        TPRecoil = data.Stats.ThirdPersonCameraRecoilFactor or 0,
+                        FPRecoil = data.Stats.FirstPersonCameraRecoilFactor or 0,
+                        Spread = data.Stats.BulletSpreadDegrees or 0,
+                        ShotgunSpread = data.Stats.ShotgunSpreadDegrees or 0
+                    }
+                end
+                if enabled then
+                    data.Stats.ThirdPersonCameraRecoilFactor = 0
+                    data.Stats.FirstPersonCameraRecoilFactor = 0
+                    data.Stats.BulletSpreadDegrees = 0
+                    data.Stats.ShotgunSpreadDegrees = 0
+                else
+                    local orig = originalGunStats[name]
+                    data.Stats.ThirdPersonCameraRecoilFactor = orig.TPRecoil
+                    data.Stats.FirstPersonCameraRecoilFactor = orig.FPRecoil
+                    data.Stats.BulletSpreadDegrees = orig.Spread
+                    data.Stats.ShotgunSpreadDegrees = orig.ShotgunSpread
+                end
+            end
+            if CFG.NoCameraBob and data and data.Animations and data.Animations.FirstPerson then
+                data.Animations.FirstPerson.RunCameraAnim = nil
+            end
+        end
+    end)
+
+    -- Unbind all recoil, smooth look & exit transitions
+    pcall(function() RunService:UnbindFromRenderStep("CameraRecoil") end)
+    pcall(function() RunService:UnbindFromRenderStep("CameraSmoothLook") end)
+    pcall(function() RunService:UnbindFromRenderStep("FirstPersonCameraExitTransition") end)
+
+    -- Zero Camera Pitch Impulse & Recoil Spring (Zero Camera Shake & Recoil)
+    pcall(function()
+        local CameraController = require(ReplicatedStorage.ClientModules.CameraController)
+        if CameraController then
+            CameraController.ImpulsePitch = function(...) end
+            local s = CameraController:GetRecoilSpring()
+            if s then
+                s.Position = 0
+                s.Target = 0
+                s.Speed = 0
+                s.Impulse = function(...) end
+            end
+            CameraController.GetRecoilSpring = function(...) return dummySpring end
+            if CFG.NoCameraBob then
+                CameraController.ShakeOnce = function(...) end
+            end
+        end
+    end)
+end
+
+-- Hook Aim, Reload, Wallbang & Camera Systems
+local function HookGuns()
+    -- 1. Aim Module Hook
+    pcall(function()
+        local Aim = require(ReplicatedStorage.ClientModules.GunController.Aim)
+        if Aim and not Aim._SecritHooked then
+            Aim._SecritHooked = true
+
+            -- Force hip-fire aim to always converge
+            Aim.MIN_AIM_CONVERGE_DISTANCE = -999999
+
+            -- Always reachable so GunController never falls back to camera lookvector
+            Aim.IsAimPointReachable = function(self, p9, p10)
+                return true
+            end
+
+            -- Return exact target aim point
+            local oldResolveCameraAimPoint = Aim.ResolveCameraAimPoint
+            Aim.ResolveCameraAimPoint = function(self, cam, range, p14, p15)
+                if CFG.AimbotEnabled or CFG.Wallbang then
+                    local tgt = currentSilentTarget
+                    if not (tgt and tgt.char and tgt.char.Parent) then tgt = FindTarget() end
+                    if tgt and tgt.char then
+                        local p = GetAimPosition(tgt)
+                        if p then return p end
+                    end
+                end
+                return oldResolveCameraAimPoint(self, cam, range, p14, p15)
+            end
+
+            -- Return exact direction vector directly into target
+            local oldResolveConverged = Aim.ResolveConvergedDirection
+            Aim.ResolveConvergedDirection = function(self, p5, p6, p7)
+                if CFG.AimbotEnabled or CFG.Wallbang then
+                    local tgt = currentSilentTarget
+                    if not (tgt and tgt.char and tgt.char.Parent) then tgt = FindTarget() end
+                    if tgt and tgt.char then
+                        local p = GetAimPosition(tgt)
+                        if p then
+                            return (p - p5).Unit
+                        end
+                    end
+                end
+                return oldResolveConverged(self, p5, p6, p7)
+            end
+        end
+    end)
+
+    -- 2. MouseController Hook
+    pcall(function()
+        if not MouseController then
+            pcall(function()
+                MouseController = require(ReplicatedStorage.ClientModules.MouseController)
+            end)
+        end
+        if MouseController then
+            pcall(function()
+                MouseController:EnableTargetRaycast("SecritAimbot")
+            end)
+            if not MouseController._SecritHooked then
+                MouseController._SecritHooked = true
+                local oldUpdate = MouseController.Update
+                MouseController.Update = function(self)
+                    oldUpdate(self)
+                    if CFG.AimbotEnabled or CFG.Wallbang then
+                        local tgt = currentSilentTarget
+                        if not (tgt and tgt.char and tgt.char.Parent) then tgt = FindTarget() end
+                        if tgt and tgt.char then
+                            local p, bone = GetAimPosition(tgt)
+                            if p and bone then
+                                self.Target = bone
+                                self.TargetHitPosition = p
+                                self.Hit = CFrame.new(p)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+
+    -- 3. Quick Reload Engine (Ensures ammo actually refills and never stays at 0)
+    pcall(function()
+        local Remotes = require(ReplicatedStorage.SharedModules.Pronghorn.Remotes)
+        local gunService = Remotes and Remotes.Client and Remotes.Client.GunService
+        if gunService and not gunService._SecritReloadHooked then
+            gunService._SecritReloadHooked = true
+            local oldReload = gunService.Reload
+            gunService.Reload = function(self, ...)
+                local ammo, stored = oldReload(self, ...)
+                if CFG.FastReload and type(ammo) ~= "number" then
+                    -- If server rejected fast reload, retry until accepted
+                    local deadline = tick() + 2.5
+                    while type(ammo) ~= "number" and tick() < deadline do
+                        task.wait(0.08)
+                        ammo, stored = oldReload(self, ...)
+                    end
+                end
+                return ammo, stored
+            end
+        end
+    end)
+
+    -- 4. Wallbang Engine (Shoot Through Walls, Doors & Obstacles)
+    pcall(function()
+        local DynamicCast = require(ReplicatedStorage.SharedModules.QueryUtils.DynamicCast)
+        if DynamicCast and not DynamicCast._SecritWallbangHooked then
+            DynamicCast._SecritWallbangHooked = true
+            local oldRun = DynamicCast.Run
+            DynamicCast.Run = function(p5, p6, p7, p8, p9, p10, p11, p12, p13)
+                -- 1. Direct Target Hitscan when Aimbot or Wallbang has active target
+                if CFG.AimbotEnabled or CFG.Wallbang then
+                    local tgt = currentSilentTarget
+                    if not (tgt and tgt.char and tgt.char.Parent) then
+                        tgt = FindTarget()
+                    end
+                    if tgt and tgt.char then
+                        local p, bone = GetAimPosition(tgt)
+                        if p and bone then
+                            local fakeHit = {
+                                Instance = bone,
+                                Position = p,
+                                Normal = Vector3.new(0, 1, 0),
+                                Material = Enum.Material.Plastic,
+                                Distance = (p - p5).Magnitude
+                            }
+                            return fakeHit, {}
+                        end
+                    end
+                end
+
+                -- 2. Multi-Layer Wallbang Penetration Engine (Pierces any number of walls/doors)
+                if CFG.Wallbang then
+                    local origin = p5
+                    local dir = p6
+                    local totalDist = dir.Magnitude
+                    if totalDist > 0.001 then
+                        local exclude = {}
+                        if p7 and p7.ExcludeInstances then
+                            for _, inst in ipairs(p7.ExcludeInstances) do table.insert(exclude, inst) end
+                        end
+                        if LocalPlayer.Character then table.insert(exclude, LocalPlayer.Character) end
+
+                        local filter = RaycastParams.new()
+                        filter.FilterType = Enum.RaycastFilterType.Exclude
+                        filter.FilterDescendantsInstances = exclude
+                        filter.IgnoreWater = true
+
+                        local currentOrigin = origin
+                        local unitDir = dir.Unit
+                        local finalHit = nil
+                        local lastHit = nil
+
+                        for _ = 1, 25 do
+                            local traveled = (currentOrigin - origin).Magnitude
+                            local remainDist = totalDist - traveled
+                            if remainDist <= 0.1 then break end
+
+                            local hit = workspace:Raycast(currentOrigin, unitDir * remainDist, filter)
+                            if not hit then break end
+                            lastHit = hit
+
+                            local hitPart = hit.Instance
+                            local hitChar = nil
+                            if hitPart and hitPart.Parent then
+                                if hitPart.Parent:FindFirstChildOfClass("Humanoid") or hitPart.Parent:HasTag("Character") or Players:GetPlayerFromCharacter(hitPart.Parent) then
+                                    hitChar = hitPart.Parent
+                                elseif hitPart.Parent.Parent and (hitPart.Parent.Parent:FindFirstChildOfClass("Humanoid") or hitPart.Parent.Parent:HasTag("Character") or Players:GetPlayerFromCharacter(hitPart.Parent.Parent)) then
+                                    hitChar = hitPart.Parent.Parent
+                                end
+                            end
+
+                            if hitChar and hitChar ~= LocalPlayer.Character then
+                                finalHit = hit
+                                break
+                            end
+
+                            -- Pierce through wall, window, door, or prop
+                            table.insert(exclude, hitPart)
+                            filter.FilterDescendantsInstances = exclude
+                            currentOrigin = hit.Position + unitDir * 0.15
+                        end
+
+                        if finalHit then
+                            return finalHit, {}
+                        elseif lastHit then
+                            return lastHit, {}
+                        end
+                    end
+                end
+
+                return oldRun(p5, p6, p7, p8, p9, p10, p11, p12, p13)
+            end
+        end
+
+        -- Direct Remote Event TryShoot Hook: 100% Server Hit Registration with Wall Bypass
+        local Remotes = require(ReplicatedStorage.SharedModules.Pronghorn.Remotes)
+        local gunService = Remotes and Remotes.Client and Remotes.Client.GunService
+        if gunService and not gunService._SecritShootHooked then
+            gunService._SecritShootHooked = true
+            local oldTryShoot = gunService.TryShoot
+            gunService.TryShoot = function(self, shots, ...)
+                if (CFG.AimbotEnabled or CFG.Wallbang) and type(shots) == "table" then
+                    local tgt = currentSilentTarget
+                    if not (tgt and tgt.char and tgt.char.Parent) then
+                        tgt = FindTarget()
+                    end
+                    if tgt and tgt.char then
+                        local hitPos, bone = GetAimPosition(tgt)
+                        if hitPos and bone then
+                            for i = 1, #shots do
+                                local s = shots[i]
+                                if type(s) == "table" then
+                                    s.TargetCharacter = tgt.char
+                                    s.TargetInstance = bone
+                                    s.BulletImpactPosition = hitPos
+                                    s.TargetSize = bone.Size
+                                    s.TargetCFrame = bone.CFrame
+                                    s.Normal = Vector3.new(0, 1, 0)
+                                    s.Material = Enum.Material.Plastic
+
+                                    if s.MuzzlePosition then
+                                        local dir = (hitPos - s.MuzzlePosition).Unit
+                                        s.MuzzleDirectionUnit = dir
+
+                                        -- Wallbang Server Obstruction Bypass:
+                                        if CFG.Wallbang then
+                                            local checkParams = RaycastParams.new()
+                                            checkParams.FilterType = Enum.RaycastFilterType.Exclude
+                                            local ex = {bone, tgt.char}
+                                            if LocalPlayer.Character then table.insert(ex, LocalPlayer.Character) end
+                                            checkParams.FilterDescendantsInstances = ex
+                                            checkParams.IgnoreWater = true
+
+                                            local obs = workspace:Raycast(s.MuzzlePosition, hitPos - s.MuzzlePosition, checkParams)
+                                            if obs and obs.Instance and not obs.Instance:IsDescendantOf(tgt.char) then
+                                                -- Wall detected between shooter and target:
+                                                -- Move origin to 1.5 studs in front of target so server raycast has 100% unobstructed line of sight
+                                                s.MuzzlePosition = hitPos - dir * 1.5
+                                                s.MuzzleDirectionUnit = dir
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    elseif CFG.Wallbang then
+                        -- Manual shots with Wallbang: check if bullet passed through an obstruction
+                        for i = 1, #shots do
+                            local s = shots[i]
+                            if type(s) == "table" and s.MuzzlePosition and s.BulletImpactPosition and s.TargetInstance then
+                                local toTarget = s.BulletImpactPosition - s.MuzzlePosition
+                                local dir = toTarget.Unit
+                                local checkParams = RaycastParams.new()
+                                checkParams.FilterType = Enum.RaycastFilterType.Exclude
+                                local ex = {s.TargetInstance}
+                                if s.TargetCharacter then table.insert(ex, s.TargetCharacter) end
+                                if LocalPlayer.Character then table.insert(ex, LocalPlayer.Character) end
+                                checkParams.FilterDescendantsInstances = ex
+                                checkParams.IgnoreWater = true
+
+                                local obs = workspace:Raycast(s.MuzzlePosition, toTarget, checkParams)
+                                if obs and obs.Instance then
+                                    s.MuzzlePosition = s.BulletImpactPosition - dir * 1.5
+                                    s.MuzzleDirectionUnit = dir
+                                end
+                            end
+                        end
+                    end
+                end
+                return oldTryShoot(self, shots, ...)
+            end
+        end
+    end)
+
+    pcall(function()
+        local CanPierceMod = require(ReplicatedStorage.SharedModules.QueryUtils.CanPierce)
+        local hf = hookfunction or replaceclosure
+        if hf and type(CanPierceMod) == "function" and not _G._SecritCanPierceHooked then
+            _G._SecritCanPierceHooked = true
+            local origCanPierce
+            origCanPierce = hf(CanPierceMod, function(p8, p9, p10)
+                if CFG.Wallbang then
+                    if p8 and p8.Parent then
+                        local model = p8:FindFirstAncestorOfClass("Model")
+                        if model then
+                            if model:FindFirstChildOfClass("Humanoid") or model:HasTag("Character") or Players:GetPlayerFromCharacter(model) then
+                                return false
+                            end
+                        end
+                    end
+                    return true
+                end
+                return origCanPierce(p8, p9, p10)
+            end)
+        end
+    end)
+
+    -- 5. Camera Shake & Recoil Removal (Zero camera shake/bob when sprinting)
+    pcall(function()
+        local CameraController = require(ReplicatedStorage.ClientModules.CameraController)
+        if CameraController and not CameraController._SecritCameraHooked then
+            CameraController._SecritCameraHooked = true
+            local oldShake = CameraController.ShakeOnce
+            CameraController.ShakeOnce = function(...)
+                if CFG.NoCameraBob then return end
+                if oldShake then return oldShake(...) end
+            end
+        end
+    end)
+end
+HookGuns()
+
+-- ══════════════════════════════════════════════════════
+-- QUICK RELOAD ENGINE
+-- ══════════════════════════════════════════════════════
+local hookedAnimators = {}
+
+local function IsReloadTrack(track)
+    if not track then return false end
+    local tname = string.lower(track.Name or "")
+    if string.find(tname, "ads") or string.find(tname, "fire") or string.find(tname, "idle") or string.find(tname, "camera") or string.find(tname, "sprint") or string.find(tname, "walk") then
+        return false
+    end
+    if track.Animation then
+        local aname = string.lower(track.Animation.Name or "")
+        if string.find(aname, "ads") or string.find(aname, "fire") or string.find(aname, "idle") or string.find(aname, "camera") or string.find(aname, "sprint") or string.find(aname, "walk") then
+            return false
+        end
+        if string.find(aname, "reload") then return true end
+    end
+    if string.find(tname, "reload") or string.find(tname, "mag") then
+        return true
+    end
+    return false
+end
+
+local function IsFireTrack(track)
+    if not track then return false end
+    local anim = track.Animation
+    if anim and anim.AnimationId then
+        local id = string.match(anim.AnimationId, "%d+")
+        if id and fireAnimIds[id] then return true end
+    end
+    local tname = string.lower(track.Name or "")
+    if string.find(tname, "fire") then return true end
+    return false
+end
+
+local function HandleTrack(track)
+    if CFG.FastReload and IsReloadTrack(track) then
+        local speed = math.clamp(CFG.ReloadSpeed or 1.35, 1, 5)
+        pcall(function()
+            track:AdjustSpeed(speed)
+        end)
+    end
+    if CFG.NoRecoil and IsFireTrack(track) then
+        pcall(function()
+            track:AdjustWeight(0.001)
+        end)
+    end
+end
+
+local function HookAnimator(animator)
+    if not animator or hookedAnimators[animator] then return end
+    hookedAnimators[animator] = true
+
+    pcall(function()
+        animator.AnimationPlayed:Connect(function(track)
+            HandleTrack(track)
+        end)
+        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+            HandleTrack(track)
+        end
+    end)
+end
+
+local function ScanAndHookAnimators()
+    pcall(function()
+        if LocalPlayer.Character then
+            for _, d in ipairs(LocalPlayer.Character:GetDescendants()) do
+                if d:IsA("Animator") then HookAnimator(d) end
+            end
+        end
+    end)
+    pcall(function()
+        for _, d in ipairs(Camera:GetDescendants()) do
+            if d:IsA("Animator") then HookAnimator(d) end
+        end
+    end)
+end
+ScanAndHookAnimators()
+
+pcall(function()
+    if LocalPlayer.Character then
+        LocalPlayer.Character.DescendantAdded:Connect(function(d)
+            if d:IsA("Animator") then HookAnimator(d) end
+        end)
+    end
+    Camera.DescendantAdded:Connect(function(d)
+        if d:IsA("Animator") then HookAnimator(d) end
+    end)
+end)
+
+-- ══════════════════════════════════════════════════════
+-- FOV CIRCLE & CUSTOM DRAWING CROSSHAIR (Direct Viewport)
+-- ══════════════════════════════════════════════════════
+local function SetupDrawings()
+    pcall(function()
+        if fovCircle then fovCircle:Remove() end
+        fovCircle = Drawing.new("Circle")
+        fovCircle.Thickness = 1.5
+        fovCircle.NumSides = 64
+        fovCircle.Radius = CFG.AimbotFOV
+        fovCircle.Filled = false
+        fovCircle.Transparency = 0.85
+        fovCircle.Color = CFG.FOVCircleColor
+        fovCircle.Visible = false
+
+        -- Custom Purple Crosshair with Black Outline (Drawing API - 100% Guaranteed Overlay)
+        if chVOut then chVOut:Remove() end
+        if chHOut then chHOut:Remove() end
+        if chVCore then chVCore:Remove() end
+        if chHCore then chHCore:Remove() end
+
+        chVOut = Drawing.new("Square")
+        chVOut.Filled = true
+        chVOut.Thickness = 0
+        chVOut.Color = Color3.fromRGB(0, 0, 0)
+        chVOut.ZIndex = 400
+        chVOut.Visible = false
+
+        chHOut = Drawing.new("Square")
+        chHOut.Filled = true
+        chHOut.Thickness = 0
+        chHOut.Color = Color3.fromRGB(0, 0, 0)
+        chHOut.ZIndex = 401
+        chHOut.Visible = false
+
+        chVCore = Drawing.new("Square")
+        chVCore.Filled = true
+        chVCore.Thickness = 0
+        chVCore.Color = Color3.fromRGB(80, 41, 255)
+        chVCore.ZIndex = 402
+        chVCore.Visible = false
+
+        chHCore = Drawing.new("Square")
+        chHCore.Filled = true
+        chHCore.Thickness = 0
+        chHCore.Color = Color3.fromRGB(80, 41, 255)
+        chHCore.ZIndex = 403
+        chHCore.Visible = false
+    end)
+end
+local SetupFOV = SetupDrawings
+
+-- ══════════════════════════════════════════════════════
+-- TARGET SEARCH ENGINE (Screen Center)
+-- ══════════════════════════════════════════════════════
+local function FindTarget()
+    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local best, bestD = nil, math.huge
+    local myPos = Camera.CFrame.Position
+    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if myRoot then myPos = myRoot.Position end
+
+    -- Search Players
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if ShouldTarget(plr) then
+            local c = plr.Character
+            local root = c and c:FindFirstChild("HumanoidRootPart")
+            if root and (root.Position - myPos).Magnitude <= CFG.AimbotMaxDist then
+                local bone = GetAimbotPart(c, CFG.AimbotBone)
+                if bone then
+                    -- Check if ANY visible part of character is inside the FOV circle
+                    local inFOV = false
+                    local minD = math.huge
+                    local checkParts = {bone, root, c:FindFirstChild("Head"), c:FindFirstChild("UpperTorso") or c:FindFirstChild("Torso")}
+                    for _, p in ipairs(checkParts) do
+                        if p and p:IsA("BasePart") then
+                            local sp, vis = W2S(p.Position)
+                            if vis then
+                                local d = (screenCenter - sp).Magnitude
+                                if d <= CFG.AimbotFOV and d < minD then
+                                    inFOV = true
+                                    minD = d
+                                end
+                            end
+                        end
+                    end
+
+                    if inFOV and minD < bestD then
+                        if not CFG.AimbotWallCheck or CFG.Wallbang or IsVisibleThroughWall(bone) then
+                            bestD = minD
+                            best = {char = c, bone = bone}
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Search Bots (BPBot)
+    if CFG.AimbotTargetBots and not CFG.AimbotWantedOnly then
+        pcall(function()
+            for _, char in ipairs(CollectionService:GetTagged("BPBot")) do
+                if char:IsA("Model") and char:FindFirstChild("HumanoidRootPart") then
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum and hum.Health > 0 then
+                        local root = char:FindFirstChild("HumanoidRootPart")
+                        if root and (root.Position - myPos).Magnitude <= CFG.AimbotMaxDist then
+                            local bone = GetAimbotPart(char, CFG.AimbotBone)
+                            if bone then
+                                local inFOV = false
+                                local minD = math.huge
+                                local checkParts = {bone, root, char:FindFirstChild("Head")}
+                                for _, p in ipairs(checkParts) do
+                                    if p and p:IsA("BasePart") then
+                                        local sp, vis = W2S(p.Position)
+                                        if vis then
+                                            local d = (screenCenter - sp).Magnitude
+                                            if d <= CFG.AimbotFOV and d < minD then
+                                                inFOV = true
+                                                minD = d
+                                            end
+                                        end
+                                    end
+                                end
+                                if inFOV and minD < bestD then
+                                    if not CFG.AimbotWallCheck or CFG.Wallbang or IsVisibleThroughWall(bone) then
+                                        bestD = minD
+                                        best = {char = char, bone = bone}
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+    end
+
+    return best
+end
+
+-- ══════════════════════════════════════════════════════
+-- SILENT AIM & BUTTER-SMOOTH CAMERA LOCK TICK
+-- ══════════════════════════════════════════════════════
+local function AimbotTick()
+    if not CFG.AimbotEnabled or not introComplete then
+        lockedTarget = nil
+        currentSilentTarget = nil
+        return
+    end
+
+    -- Determine trigger state
+    local isShooting = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+    local isAiming   = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+    local active = false
+    if CFG.AimbotTrigger == "Shoot Only" then
+        active = isShooting
+    elseif CFG.AimbotTrigger == "Aim Only" then
+        active = isAiming
+    elseif CFG.AimbotTrigger == "Always Active" then
+        active = true
+    else
+        active = isShooting or isAiming
+    end
+
+    if not active then
+        lockedTarget = nil
+        currentSilentTarget = nil
+        return
+    end
+
+    -- Auto-Switch: check if current target died or left range
+    if lockedTarget then
+        local hum = lockedTarget:FindFirstChildOfClass("Humanoid")
+        local root = lockedTarget:FindFirstChild("HumanoidRootPart")
+        if not hum or hum.Health <= 0 or not root or not lockedTarget.Parent then
+            lockedTarget = nil
+            currentSilentTarget = nil
+        else
+            local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if myRoot and (root.Position - myRoot.Position).Magnitude > CFG.AimbotMaxDist then
+                lockedTarget = nil
+                currentSilentTarget = nil
+            end
+        end
+    end
+
+    local tgt = nil
+    if CFG.AimbotStickyLock and lockedTarget then
+        local bone = GetAimbotPart(lockedTarget, CFG.AimbotBone)
+        if bone and (not CFG.AimbotWallCheck or CFG.Wallbang or IsVisibleThroughWall(bone)) then
+            tgt = {char = lockedTarget, bone = bone}
+        else
+            lockedTarget = nil
+        end
+    end
+
+    if not tgt then
+        tgt = FindTarget()
+        if tgt and CFG.AimbotStickyLock then
+            lockedTarget = tgt.char
+        end
+    end
+
+    if not tgt or not tgt.bone then
+        currentSilentTarget = nil
+        return
+    end
+
+    currentSilentTarget = tgt
+
+    local aimPoint, aimBone = GetAimPosition(tgt)
+    if not aimPoint or not aimBone then return end
+
+
+
+    -- 1. Clean, Rock-Solid Camera Lock & Weapon Steady Alignment
+    if CFG.AimbotMode == "Camera Lock" or CFG.AimbotMode == "Silent + Camera" then
+        local cf = Camera.CFrame
+        local dir = (aimPoint - cf.Position).Unit
+        local goal = CFrame.lookAt(cf.Position, cf.Position + dir)
+        local s = math.clamp(CFG.AimbotSmooth or 6, 1, 30)
+        local isSnap = (CFG.SnapOnShoot and isShooting) or s <= 1
+
+        if isSnap then
+            Camera.CFrame = goal
+        else
+            local factor = math.clamp(1 / (s * 0.35), 0.08, 0.90)
+            Camera.CFrame = cf:Lerp(goal, factor)
+        end
+
+        -- Kill CameraRecoil permanently if re-bound
+        pcall(function()
+            RunService:UnbindFromRenderStep("CameraRecoil")
+        end)
+
+        -- Align ViewModel gun model directly with Camera & Target (Zero Upward Kick, Zero Sway, 100% Steady)
+        pcall(function()
+            local vm = Camera:FindFirstChild("ViewModel")
+            if vm then
+                vm:PivotTo(Camera.CFrame * CFrame.new(0.9, -0.8, -0.75))
+            end
+        end)
+    end
+
+    -- 2. Silent Bullet Redirect (MouseController + Direct Bullet Hit Vector)
+    if MouseController then
+        pcall(function()
+            MouseController.Target = aimBone
+            MouseController.TargetHitPosition = aimPoint
+            MouseController.Hit = CFrame.new(aimPoint)
+        end)
+    end
+end
+
+-- ══════════════════════════════════════════════════════
+-- TRIGGERBOT (Auto-Fire on Crosshair Intersection)
+-- ══════════════════════════════════════════════════════
+local lastTriggerShot = 0
+local function TriggerbotTick()
+    if not CFG.Triggerbot or not introComplete then return end
+    local now = tick()
+    if now - lastTriggerShot < (CFG.TriggerbotDelay / 1000) then return end
+
+    local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local shouldFire = false
+
+    if currentSilentTarget and currentSilentTarget.char then
+        local p, bone = GetAimPosition(currentSilentTarget)
+        if p and bone then
+            local sp, vis = W2S(p)
+            if vis and (screenCenter - sp).Magnitude <= 32 then
+                shouldFire = true
+            end
+        end
+    end
+
+    if not shouldFire and MouseController and MouseController.Target then
+        local hitChar = MouseController.Target:FindFirstAncestorOfClass("Model")
+        local plr = hitChar and Players:GetPlayerFromCharacter(hitChar)
+        if plr and ShouldTarget(plr) then
+            shouldFire = true
+        end
+    end
+
+    if shouldFire then
+        lastTriggerShot = now
+        pcall(function()
+            if mouse1click then
+                mouse1click()
+            elseif mouse1press and mouse1release then
+                mouse1press()
+                task.wait(0.02)
+                mouse1release()
+            end
+        end)
+    end
+end
+
+-- ══════════════════════════════════════════════════════
+-- HIGH-PERFORMANCE CHAMS (Zero Lag Highlight Engine)
+-- ══════════════════════════════════════════════════════
+local function UpdateHighlight(char, col, enabled)
+    if not char then return end
+    pcall(function()
+        local hl = char:FindFirstChild("_SecritChams")
+        if not hl then
+            if not enabled then return end
+            hl = Instance.new("Highlight")
+            hl.Name = "_SecritChams"
+            hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            hl.FillTransparency = 0.55
+            hl.OutlineTransparency = 0.1
+            hl.Parent = char
+        end
+        if hl.Enabled ~= enabled then
+            hl.Enabled = enabled
+        end
+        if enabled and hl.FillColor ~= col then
+            hl.FillColor = col or CFG.AccentColor
+            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+        end
+    end)
+end
+
+-- ══════════════════════════════════════════════════════
+-- FAST 2D ESP ENGINE (Clean Screenshot Layout)
+-- ══════════════════════════════════════════════════════
+local SKEL_R15 = {
+    {"Head","UpperTorso"},{"UpperTorso","LowerTorso"},
+    {"UpperTorso","LeftUpperArm"},{"LeftUpperArm","LeftLowerArm"},{"LeftLowerArm","LeftHand"},
+    {"UpperTorso","RightUpperArm"},{"RightUpperArm","RightLowerArm"},{"RightLowerArm","RightHand"},
+    {"LowerTorso","LeftUpperLeg"},{"LeftUpperLeg","LeftLowerLeg"},{"LeftLowerLeg","LeftFoot"},
+    {"LowerTorso","RightUpperLeg"},{"RightUpperLeg","RightLowerLeg"},{"RightLowerLeg","RightFoot"}
+}
+local SKEL_R6 = {
+    {"Head","Torso"},
+    {"Torso","Left Arm"},
+    {"Torso","Right Arm"},
+    {"Torso","Left Leg"},
+    {"Torso","Right Leg"}
+}
+
+local function CreateDrawing()
+    local e = {}
+    pcall(function()
+        -- 2D Box
+        e.BoxOutline = Drawing.new("Square")
+        e.BoxOutline.Thickness = 2.5
+        e.BoxOutline.Filled = false
+        e.BoxOutline.Color = Color3.new(0, 0, 0)
+        e.BoxOutline.ZIndex = 1
+        e.BoxOutline.Visible = false
+
+        e.Box = Drawing.new("Square")
+        e.Box.Thickness = 1.2
+        e.Box.Filled = false
+        e.Box.ZIndex = 2
+        e.Box.Visible = false
+
+        -- Horizontal Top Health Bar
+        e.HPBG = Drawing.new("Line")
+        e.HPBG.Thickness = 3
+        e.HPBG.Color = Color3.fromRGB(30, 30, 35)
+        e.HPBG.ZIndex = 2
+        e.HPBG.Visible = false
+
+        e.HP = Drawing.new("Line")
+        e.HP.Thickness = 3
+        e.HP.Color = Color3.fromRGB(46, 204, 113)
+        e.HP.ZIndex = 3
+        e.HP.Visible = false
+
+        -- Name Text
+        e.Name = Drawing.new("Text")
+        e.Name.Size = 13
+        e.Name.Center = true
+        e.Name.Outline = true
+        e.Name.Color = Color3.new(1, 1, 1)
+        e.Name.Font = 2
+        e.Name.ZIndex = 3
+        e.Name.Visible = false
+
+        -- HP Text (HP: 100)
+        e.HPText = Drawing.new("Text")
+        e.HPText.Size = 12
+        e.HPText.Center = true
+        e.HPText.Outline = true
+        e.HPText.Color = Color3.fromRGB(61, 250, 126)
+        e.HPText.Font = 2
+        e.HPText.ZIndex = 3
+        e.HPText.Visible = false
+
+        -- Distance Text (Dist: 956)
+        e.Dist = Drawing.new("Text")
+        e.Dist.Size = 12
+        e.Dist.Center = true
+        e.Dist.Outline = true
+        e.Dist.Color = Color3.fromRGB(220, 220, 220)
+        e.Dist.Font = 2
+        e.Dist.ZIndex = 3
+        e.Dist.Visible = false
+
+        -- Tracer Line
+        e.Tracer = Drawing.new("Line")
+        e.Tracer.Thickness = 1.2
+        e.Tracer.ZIndex = 2
+        e.Tracer.Visible = false
+
+        -- Skeleton (ZIndex 2)
+        e.Skel = {}
+        for i = 1, 14 do
+            local l = Drawing.new("Line")
+            l.Thickness = 1.2
+            l.ZIndex = 2
+            l.Visible = false
+            e.Skel[i] = l
+        end
+    end)
+    return e
+end
+
+local function HideESP(e)
+    if not e then return end
+    pcall(function()
+        if e.BoxOutline then e.BoxOutline.Visible = false end
+        if e.Box then e.Box.Visible = false end
+        if e.HP then e.HP.Visible = false end
+        if e.HPBG then e.HPBG.Visible = false end
+        if e.Name then e.Name.Visible = false end
+        if e.HPText then e.HPText.Visible = false end
+        if e.Dist then e.Dist.Visible = false end
+        if e.Tracer then e.Tracer.Visible = false end
+        if e.Skel then
+            for _, l in ipairs(e.Skel) do l.Visible = false end
+        end
+        if e.Char then
+            UpdateHighlight(e.Char, nil, false)
+        end
+    end)
+end
+
+local function RemoveESP(e)
+    if not e then return end
+    pcall(function()
+        if e.BoxOutline then e.BoxOutline:Remove() end
+        if e.Box then e.Box:Remove() end
+        if e.HP then e.HP:Remove() end
+        if e.HPBG then e.HPBG:Remove() end
+        if e.Name then e.Name:Remove() end
+        if e.HPText then e.HPText:Remove() end
+        if e.Dist then e.Dist:Remove() end
+        if e.Tracer then e.Tracer:Remove() end
+        if e.Skel then
+            for _, l in ipairs(e.Skel) do
+                pcall(function() l:Remove() end)
+            end
+        end
+        if e.Char then
+            local hl = e.Char:FindFirstChild("_SecritChams")
+            if hl then hl:Destroy() end
+        end
+    end)
+end
+
+local function DrawESP(char, e, col, dName, isBot2, stars)
+    if not CFG.ESPEnabled or not introComplete then HideESP(e) return end
+
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum or hum.Health <= 0 then HideESP(e) return end
+
+    local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not myRoot then HideESP(e) return end
+
+    local dist = (root.Position - myRoot.Position).Magnitude
+    if dist > CFG.ESPMaxDist then HideESP(e) return end
+
+    e.Char = char
+
+    -- Fast, precise Head & Root 3D bounds
+    local head = char:FindFirstChild("Head")
+    local top3D = head and (head.Position + Vector3.new(0, 0.75, 0)) or (root.Position + Vector3.new(0, 2.7, 0))
+    local bot3D = root.Position - Vector3.new(0, 3.1, 0)
+
+    local topSP, topVis, topDepth = W2S(top3D)
+    local botSP, botVis, botDepth = W2S(bot3D)
+    local rootSP, rootVis, rootDepth = W2S(root.Position)
+
+    if (not topVis and not botVis and not rootVis) or rootDepth < 1 then
+        HideESP(e)
+        return
+    end
+
+    local minY = math.min(topSP.Y, botSP.Y)
+    local maxY = math.max(topSP.Y, botSP.Y)
+    local height = maxY - minY
+    if height < 3 or height > 2200 then HideESP(e) return end
+
+    local width = math.clamp(height * 0.55, 6, 800)
+    local cx = rootSP.X
+    local x = cx - (width * 0.5)
+    local y = minY
+
+    -- 2D Box
+    if CFG.BoxESP and e.Box and e.BoxOutline then
+        e.BoxOutline.Position = Vector2.new(x, y)
+        e.BoxOutline.Size = Vector2.new(width, height)
+        e.BoxOutline.Visible = true
+
+        e.Box.Position = Vector2.new(x, y)
+        e.Box.Size = Vector2.new(width, height)
+        e.Box.Color = col
+        e.Box.Visible = true
+    else
+        if e.Box then e.Box.Visible = false end
+        if e.BoxOutline then e.BoxOutline.Visible = false end
+    end
+
+    -- Horizontal Top Health Bar (Like in screenshot)
+    local hp, mhp = GetHP(char)
+    local frac = math.clamp(hp / mhp, 0, 1)
+
+    if CFG.HealthBarESP and e.HP and e.HPBG then
+        local barW = math.clamp(width * 0.75, 36, 65)
+        local barX = cx - (barW * 0.5)
+        local barY = y - 22
+
+        e.HPBG.From = Vector2.new(barX, barY)
+        e.HPBG.To = Vector2.new(barX + barW, barY)
+        e.HPBG.Thickness = 3
+        e.HPBG.Color = Color3.fromRGB(30, 33, 42)
+        e.HPBG.Visible = true
+
+        e.HP.From = Vector2.new(barX, barY)
+        e.HP.To = Vector2.new(barX + (barW * frac), barY)
+        e.HP.Thickness = 3
+        e.HP.Color = Color3.fromRGB(46, 204, 113)
+        e.HP.Visible = true
+    else
+        if e.HP then e.HP.Visible = false end
+        if e.HPBG then e.HPBG.Visible = false end
+    end
+
+    -- Name & Stars
+    if CFG.NamesESP and e.Name then
+        local lbl = ""
+        if isBot2 then
+            lbl = "[BOT] " .. (dName or "Bot")
+        elseif stars and stars > 0 then
+            local starStr = string.rep("★", stars)
+            lbl = "[" .. starStr .. "] " .. (dName or "Suspect")
+        else
+            lbl = dName or "?"
+        end
+
+        e.Name.Text = lbl
+        e.Name.Position = Vector2.new(cx, y - 16)
+        e.Name.Color = (stars and stars > 0) and Color3.fromRGB(255, 75, 75) or Color3.fromRGB(255, 255, 255)
+        e.Name.Visible = true
+    else
+        if e.Name then e.Name.Visible = false end
+    end
+
+    -- HP Label (HP: 100)
+    if e.HPText then
+        if CFG.HealthBarESP then
+            e.HPText.Text = string.format("HP: %d", math.floor(hp))
+            e.HPText.Position = Vector2.new(cx, y - 2)
+            e.HPText.Color = Color3.fromRGB(61, 250, 126)
+            e.HPText.Visible = true
+        else
+            e.HPText.Visible = false
+        end
+    end
+
+    -- Distance (Dist: 956)
+    if CFG.DistanceESP and e.Dist then
+        e.Dist.Text = string.format("Dist: %d", math.floor(dist))
+        e.Dist.Position = Vector2.new(cx, y + 12)
+        e.Dist.Color = Color3.fromRGB(220, 220, 220)
+        e.Dist.Visible = true
+    else
+        if e.Dist then e.Dist.Visible = false end
+    end
+
+    -- Tracer
+    if CFG.TracersESP and e.Tracer then
+        local vp = Camera.ViewportSize
+        e.Tracer.From = Vector2.new(vp.X / 2, vp.Y)
+        e.Tracer.To = Vector2.new(cx, y + height)
+        e.Tracer.Color = col
+        e.Tracer.Visible = true
+    else
+        if e.Tracer then e.Tracer.Visible = false end
+    end
+
+    -- Skeleton (Optimized: Only rendered for targets within 200m)
+    if CFG.SkeletonESP and e.Skel and dist <= 200 and height >= 16 then
+        local sk = char:FindFirstChild("UpperTorso") and SKEL_R15 or SKEL_R6
+        for i, cn in ipairs(sk) do
+            local ln = e.Skel[i]
+            if ln then
+                local pA = char:FindFirstChild(cn[1])
+                local pB = char:FindFirstChild(cn[2])
+                if pA and pB and pA:IsA("BasePart") and pB:IsA("BasePart") then
+                    local sA, vA = W2S(pA.Position)
+                    local sB, vB = W2S(pB.Position)
+                    if vA and vB then
+                        ln.From = sA; ln.To = sB; ln.Color = col; ln.Visible = true
+                    else
+                        ln.Visible = false
+                    end
+                else
+                    ln.Visible = false
+                end
+            end
+        end
+    else
+        if e.Skel then
+            for _, ln in ipairs(e.Skel) do ln.Visible = false end
+        end
+    end
+
+    -- Chams (Always On Top)
+    if CFG.ChamsESP then
+        UpdateHighlight(char, col, true)
+    else
+        UpdateHighlight(char, nil, false)
+    end
+end
+
+-- ══════════════════════════════════════════════════════
+-- ESP MAIN LOOP
+-- ══════════════════════════════════════════════════════
+local function ESPLoop()
+    if not CFG.ESPEnabled or not introComplete then
+        for _, e in pairs(espCache) do HideESP(e) end
+        return
+    end
+
+    local currentPlayers = {}
+
+    -- Render Players
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            currentPlayers[plr] = true
+            if not espCache[plr] then
+                espCache[plr] = CreateDrawing()
+            end
+            local e = espCache[plr]
+            if ShouldShowESP(plr) then
+                local r = GetRole(plr)
+                local col = CFG.EnemyColor
+                if r == "Authority" then
+                    col = CFG.PoliceColor
+                elseif r == "Civilian" then
+                    col = CFG.FriendlyColor
+                end
+                local stars = GetPlayerWantedStars(plr)
+                DrawESP(plr.Character, e, col, plr.DisplayName or plr.Name, false, stars)
+            else
+                HideESP(e)
+            end
+        end
+    end
+
+    -- Render Bots (BPBot)
+    if CFG.ESPEnabled and CFG.ESPTargetBots and not CFG.ESPWantedOnly then
+        pcall(function()
+            for _, char in ipairs(CollectionService:GetTagged("BPBot")) do
+                if char:IsA("Model") and char:FindFirstChild("HumanoidRootPart") then
+                    currentPlayers[char] = true
+                    if not espCache[char] then
+                        espCache[char] = CreateDrawing()
+                    end
+                    local e = espCache[char]
+                    DrawESP(char, e, CFG.BotColor, char.Name, true, 0)
+                end
+            end
+        end)
+    end
+
+    -- Cleanup Disconnected Entities
+    for obj, e in pairs(espCache) do
+        if not currentPlayers[obj] then
+            RemoveESP(e)
+            espCache[obj] = nil
+        end
+    end
+end
+
+-- Clean removal on player leave
+Players.PlayerRemoving:Connect(function(plr)
+    if espCache[plr] then
+        RemoveESP(espCache[plr])
+        espCache[plr] = nil
+    end
+end)
+
+-- ══════════════════════════════════════════════════════
+-- CRIMINAL FEATURES
+-- ══════════════════════════════════════════════════════
+local crimTick = 0
+local function CrimFeatures()
+    crimTick = crimTick + 1
+    if crimTick % 20 ~= 0 then return end -- Every ~0.33s
+
+    pcall(function()
+        local c = LocalPlayer.Character
+        if not c then return end
+        if CFG.AntiHandcuffs then
+            c:SetAttribute("IsDetained", nil)
+            c:SetAttribute("DetainedByUserId", nil)
+            c:SetAttribute("Handcuffed", nil)
+            c:SetAttribute("Restrained", nil)
+        end
+        if CFG.AntiTase then
+            c:SetAttribute("Tased", nil)
+            c:SetAttribute("Stunned", nil)
+        end
+        if CFG.SpeedBoost then
+            local h = c:FindFirstChildOfClass("Humanoid")
+            if h then h.WalkSpeed = CFG.SpeedValue end
+        end
+    end)
+end
+
+-- ══════════════════════════════════════════════════════
+-- UI HELPERS (Pure Obsidian Glassmorphism)
+-- ══════════════════════════════════════════════════════
+local function MkCorner(parent, r)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, r or 8)
+    c.Parent = parent
+    return c
+end
+
+local function MkStroke(parent, col, th)
+    local s = Instance.new("UIStroke")
+    s.Color = col or Color3.fromRGB(35, 38, 52)
+    s.Thickness = th or 1
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = parent
+    return s
+end
+
+local function MkToggle(parent, text, def, cb)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1, 0, 0, 42)
+    f.BackgroundColor3 = Color3.fromRGB(18, 19, 28)
+    f.BorderSizePixel = 0
+    f.Parent = parent
+    MkCorner(f, 8)
+    MkStroke(f, Color3.fromRGB(30, 33, 46), 1)
+
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(1, -64, 1, 0)
+    l.Position = UDim2.new(0, 12, 0, 0)
+    l.BackgroundTransparency = 1
+    l.Text = text
+    l.TextColor3 = Color3.fromRGB(235, 235, 245)
+    l.TextSize = 13
+    l.Font = Enum.Font.GothamMedium
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Parent = f
+
+    local tb = Instance.new("TextButton")
+    tb.Size = UDim2.new(0, 44, 0, 22)
+    tb.Position = UDim2.new(1, -54, 0.5, -11)
+    tb.BackgroundColor3 = def and CFG.AccentColor or Color3.fromRGB(35, 38, 52)
+    tb.BorderSizePixel = 0
+    tb.Text = ""
+    tb.Parent = f
+    MkCorner(tb, 11)
+
+    local dot = Instance.new("Frame")
+    dot.Size = UDim2.new(0, 16, 0, 16)
+    dot.Position = def and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)
+    dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    dot.BorderSizePixel = 0
+    dot.Parent = tb
+    MkCorner(dot, 8)
+
+    local st = def
+    tb.MouseButton1Click:Connect(function()
+        st = not st
+        TweenService:Create(tb, TweenInfo.new(0.18), {BackgroundColor3 = st and CFG.AccentColor or Color3.fromRGB(35, 38, 52)}):Play()
+        TweenService:Create(dot, TweenInfo.new(0.18), {Position = st and UDim2.new(1, -19, 0.5, -8) or UDim2.new(0, 3, 0.5, -8)}):Play()
+        cb(st)
+    end)
+    return f
+end
+
+local function MkSlider(parent, text, minV, maxV, def, cb)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1, 0, 0, 52)
+    f.BackgroundColor3 = Color3.fromRGB(18, 19, 28)
+    f.BorderSizePixel = 0
+    f.Parent = parent
+    MkCorner(f, 8)
+    MkStroke(f, Color3.fromRGB(30, 33, 46), 1)
+
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(0.7, 0, 0, 20)
+    l.Position = UDim2.new(0, 12, 0, 6)
+    l.BackgroundTransparency = 1
+    l.Text = text
+    l.TextColor3 = Color3.fromRGB(235, 235, 245)
+    l.TextSize = 13
+    l.Font = Enum.Font.GothamMedium
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Parent = f
+
+    local vl = Instance.new("TextLabel")
+    vl.Size = UDim2.new(0.25, 0, 0, 20)
+    vl.Position = UDim2.new(0.73, 0, 0, 6)
+    vl.BackgroundTransparency = 1
+    vl.Text = tostring(def)
+    vl.TextColor3 = CFG.AccentColor
+    vl.TextSize = 13
+    vl.Font = Enum.Font.GothamBold
+    vl.TextXAlignment = Enum.TextXAlignment.Right
+    vl.Parent = f
+
+    local bg = Instance.new("Frame")
+    bg.Size = UDim2.new(1, -24, 0, 5)
+    bg.Position = UDim2.new(0, 12, 0, 34)
+    bg.BackgroundColor3 = Color3.fromRGB(28, 30, 42)
+    bg.BorderSizePixel = 0
+    bg.Parent = f
+    MkCorner(bg, 3)
+
+    local fill = Instance.new("Frame")
+    local pct = math.clamp((def - minV) / (maxV - minV), 0, 1)
+    fill.Size = UDim2.new(pct, 0, 1, 0)
+    fill.BackgroundColor3 = CFG.AccentColor
+    fill.BorderSizePixel = 0
+    fill.Parent = bg
+    MkCorner(fill, 3)
+
+    local trigger = Instance.new("TextButton")
+    trigger.Size = UDim2.new(1, 0, 1, 0)
+    trigger.BackgroundTransparency = 1
+    trigger.Text = ""
+    trigger.Parent = bg
+
+    local sliding = false
+    local function update(input)
+        local posX = math.clamp((input.Position.X - bg.AbsolutePosition.X) / bg.AbsoluteSize.X, 0, 1)
+        local val = math.floor(minV + (maxV - minV) * posX)
+        fill.Size = UDim2.new(posX, 0, 1, 0)
+        vl.Text = tostring(val)
+        cb(val)
+    end
+
+    trigger.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            sliding = true
+            update(i)
+        end
+    end)
+    trigger.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then sliding = false end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if sliding and i.UserInputType == Enum.UserInputType.MouseMovement then update(i) end
+    end)
+end
+
+local function MkDropdown(parent, text, opts, def, cb)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1, 0, 0, 42)
+    f.BackgroundColor3 = Color3.fromRGB(18, 19, 28)
+    f.BorderSizePixel = 0
+    f.Parent = parent
+    MkCorner(f, 8)
+    MkStroke(f, Color3.fromRGB(30, 33, 46), 1)
+
+    local l = Instance.new("TextLabel")
+    l.Size = UDim2.new(0.48, 0, 1, 0)
+    l.Position = UDim2.new(0, 12, 0, 0)
+    l.BackgroundTransparency = 1
+    l.Text = text
+    l.TextColor3 = Color3.fromRGB(235, 235, 245)
+    l.TextSize = 13
+    l.Font = Enum.Font.GothamMedium
+    l.TextXAlignment = Enum.TextXAlignment.Left
+    l.Parent = f
+
+    local idx = 1
+    for i, v in ipairs(opts) do if v == def then idx = i break end end
+
+    local vb = Instance.new("TextButton")
+    vb.Size = UDim2.new(0.48, 0, 0, 28)
+    vb.Position = UDim2.new(0.5, 0, 0.5, -14)
+    vb.BackgroundColor3 = Color3.fromRGB(26, 28, 40)
+    vb.BorderSizePixel = 0
+    vb.Text = opts[idx] .. "  ▼"
+    vb.TextColor3 = CFG.AccentColor
+    vb.TextSize = 12
+    vb.Font = Enum.Font.GothamBold
+    vb.Parent = f
+    MkCorner(vb, 6)
+    MkStroke(vb, Color3.fromRGB(40, 44, 62), 1)
+
+    vb.MouseButton1Click:Connect(function()
+        idx = idx % #opts + 1
+        vb.Text = opts[idx] .. "  ▼"
+        cb(opts[idx])
+    end)
+end
+
+local function MkFOVButtons(parent)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(1, 0, 0, 38)
+    f.BackgroundTransparency = 1
+    f.Parent = parent
+
+    local bMinus = Instance.new("TextButton")
+    bMinus.Size = UDim2.new(0.48, -4, 1, 0)
+    bMinus.Position = UDim2.new(0, 0, 0, 0)
+    bMinus.BackgroundColor3 = Color3.fromRGB(22, 24, 34)
+    bMinus.BorderSizePixel = 0
+    bMinus.Text = "FOV  -"
+    bMinus.TextColor3 = Color3.fromRGB(220, 225, 240)
+    bMinus.TextSize = 13
+    bMinus.Font = Enum.Font.GothamBold
+    bMinus.Parent = f
+    MkCorner(bMinus, 8)
+    MkStroke(bMinus, Color3.fromRGB(36, 40, 56), 1)
+
+    local bPlus = Instance.new("TextButton")
+    bPlus.Size = UDim2.new(0.48, -4, 1, 0)
+    bPlus.Position = UDim2.new(0.52, 4, 0, 0)
+    bPlus.BackgroundColor3 = Color3.fromRGB(22, 24, 34)
+    bPlus.BorderSizePixel = 0
+    bPlus.Text = "FOV  +"
+    bPlus.TextColor3 = Color3.fromRGB(220, 225, 240)
+    bPlus.TextSize = 13
+    bPlus.Font = Enum.Font.GothamBold
+    bPlus.Parent = f
+    MkCorner(bPlus, 8)
+    MkStroke(bPlus, Color3.fromRGB(36, 40, 56), 1)
+
+    bMinus.MouseButton1Click:Connect(function()
+        CFG.AimbotFOV = math.clamp(CFG.AimbotFOV - 15, 30, 450)
+    end)
+    bPlus.MouseButton1Click:Connect(function()
+        CFG.AimbotFOV = math.clamp(CFG.AimbotFOV + 15, 30, 450)
+    end)
+end
+
+-- ══════════════════════════════════════════════════════
+-- TOGGLE GUI (Silky Quart Pop-In Animation)
+-- ══════════════════════════════════════════════════════
+local function ToggleGUI()
+    guiOpen = not guiOpen
+    if not MainFrame or not uiScale then return end
+
+    if guiOpen then
+        MainFrame.Visible = true
+        MainFrame.BackgroundTransparency = 0.5
+        uiScale.Scale = 0.90
+
+        TweenService:Create(uiScale, TweenInfo.new(0.25, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Scale = 1.0}):Play()
+        TweenService:Create(MainFrame, TweenInfo.new(0.20, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
+    else
+        TweenService:Create(uiScale, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {Scale = 0.90}):Play()
+        TweenService:Create(MainFrame, TweenInfo.new(0.18, Enum.EasingStyle.Quart, Enum.EasingDirection.In), {BackgroundTransparency = 1}):Play()
+        task.delay(0.20, function()
+            if not guiOpen then
+                MainFrame.Visible = false
+            end
+        end)
+    end
+end
+
+-- ══════════════════════════════════════════════════════
+-- BUILD GUI & FULLSCREEN PURE BLACK INTRO
+-- ══════════════════════════════════════════════════════
+local function BuildGUI()
+    pcall(function()
+        if ScreenGui then ScreenGui:Destroy() end
+    end)
+
+    ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "SecritCrimV7"
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    ScreenGui.DisplayOrder = 9999
+    ScreenGui.IgnoreGuiInset = true
+
+    pcall(function() ScreenGui.Parent = CoreGui end)
+    if not ScreenGui.Parent then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+
+    -- CUSTOM PURPLE PIXEL CROSSHAIR (Centered Concentric with FOV)
+    crosshairFrame = Instance.new("Frame")
+    crosshairFrame.Name = "_SecritCrosshair"
+    crosshairFrame.Size = UDim2.new(0, CFG.CrosshairSize, 0, CFG.CrosshairSize)
+    crosshairFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    crosshairFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    crosshairFrame.BackgroundTransparency = 1
+    crosshairFrame.ZIndex = 400
+    crosshairFrame.Visible = CFG.CustomCrosshair
+    crosshairFrame.Parent = ScreenGui
+
+    -- Native pixel-perfect vector representation of the purple plus with black outline
+    local vBar = Instance.new("Frame")
+    vBar.Size = UDim2.new(0, 4, 0, 14)
+    vBar.AnchorPoint = Vector2.new(0.5, 0.5)
+    vBar.Position = UDim2.new(0.5, 0, 0.5, 0)
+    vBar.BackgroundColor3 = Color3.fromRGB(80, 41, 255)
+    vBar.BorderSizePixel = 1
+    vBar.BorderColor3 = Color3.new(0, 0, 0)
+    vBar.ZIndex = 401
+    vBar.Parent = crosshairFrame
+
+    local hBar = Instance.new("Frame")
+    hBar.Size = UDim2.new(0, 14, 0, 4)
+    hBar.AnchorPoint = Vector2.new(0.5, 0.5)
+    hBar.Position = UDim2.new(0.5, 0, 0.5, 0)
+    hBar.BackgroundColor3 = Color3.fromRGB(80, 41, 255)
+    hBar.BorderSizePixel = 1
+    hBar.BorderColor3 = Color3.new(0, 0, 0)
+    hBar.ZIndex = 402
+    hBar.Parent = crosshairFrame
+
+    if CrosshairAssetId then
+        local img = Instance.new("ImageLabel")
+        img.Size = UDim2.new(1, 0, 1, 0)
+        img.BackgroundTransparency = 1
+        img.Image = CrosshairAssetId
+        img.ScaleType = Enum.ScaleType.Fit
+        img.ResampleMode = Enum.ResamplerMode.Pixelated
+        img.ZIndex = 403
+        img.Parent = crosshairFrame
+    end
+
+    -- FULLSCREEN PURE BLACK INTRO
+    local IF = Instance.new("Frame")
+    IF.Size = UDim2.new(1, 0, 1, 0)
+    IF.Position = UDim2.new(0, 0, 0, 0)
+    IF.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    IF.BorderSizePixel = 0
+    IF.ZIndex = 500
+    IF.Parent = ScreenGui
+
+    -- Centered Container for Logo, Name & Loading Bar
+    local centerBox = Instance.new("Frame")
+    centerBox.Size = UDim2.new(0, 480, 0, 390)
+    centerBox.AnchorPoint = Vector2.new(0.5, 0.5)
+    centerBox.Position = UDim2.new(0.5, 0, 0.5, 0)
+    centerBox.BackgroundTransparency = 1
+    centerBox.ZIndex = 501
+    centerBox.Parent = IF
+
+    -- Logo (Centered in the middle)
+    local logo = Instance.new("ImageLabel")
+    logo.Size = UDim2.new(0, 160, 0, 160)
+    logo.AnchorPoint = Vector2.new(0.5, 0)
+    logo.Position = UDim2.new(0.5, 0, 0, 0)
+    logo.BackgroundTransparency = 1
+    logo.ImageTransparency = 1
+    logo.ScaleType = Enum.ScaleType.Fit
+    logo.ZIndex = 502
+    logo.Image = LogoAssetId or ""
+    logo.Parent = centerBox
+    MkCorner(logo, 16)
+
+    -- Page Name: SECRIT--SCRIPT
+    local tt = Instance.new("TextLabel")
+    tt.Size = UDim2.new(1, 0, 0, 36)
+    tt.AnchorPoint = Vector2.new(0.5, 0)
+    tt.Position = UDim2.new(0.5, 0, 0, 172)
+    tt.BackgroundTransparency = 1
+    tt.Text = "SECRIT--SCRIPT"
+    tt.TextColor3 = Color3.fromRGB(255, 255, 255)
+    tt.TextSize = 28
+    tt.Font = Enum.Font.GothamBlack
+    tt.TextTransparency = 1
+    tt.ZIndex = 502
+    tt.Parent = centerBox
+
+    -- Hub Subtitle
+    local st = Instance.new("TextLabel")
+    st.Size = UDim2.new(1, 0, 0, 22)
+    st.AnchorPoint = Vector2.new(0.5, 0)
+    st.Position = UDim2.new(0.5, 0, 0, 210)
+    st.BackgroundTransparency = 1
+    st.Text = "CRIMINAL HUB V7"
+    st.TextColor3 = CFG.AccentColor
+    st.TextSize = 14
+    st.Font = Enum.Font.GothamBold
+    st.TextTransparency = 1
+    st.ZIndex = 502
+    st.Parent = centerBox
+
+    -- Loading Bar Track
+    local lbg = Instance.new("Frame")
+    lbg.Size = UDim2.new(0, 320, 0, 6)
+    lbg.AnchorPoint = Vector2.new(0.5, 0)
+    lbg.Position = UDim2.new(0.5, 0, 0, 252)
+    lbg.BackgroundColor3 = Color3.fromRGB(24, 24, 32)
+    lbg.BackgroundTransparency = 1
+    lbg.BorderSizePixel = 0
+    lbg.ZIndex = 502
+    lbg.Parent = centerBox
+    MkCorner(lbg, 3)
+
+    -- Loading Bar Fill
+    local lfl = Instance.new("Frame")
+    lfl.Size = UDim2.new(0, 0, 1, 0)
+    lfl.BackgroundColor3 = CFG.AccentColor
+    lfl.BackgroundTransparency = 1
+    lfl.BorderSizePixel = 0
+    lfl.ZIndex = 503
+    lfl.Parent = lbg
+    MkCorner(lfl, 3)
+
+    -- Loading Status Text
+    local lt = Instance.new("TextLabel")
+    lt.Size = UDim2.new(1, 0, 0, 20)
+    lt.AnchorPoint = Vector2.new(0.5, 0)
+    lt.Position = UDim2.new(0.5, 0, 0, 268)
+    lt.BackgroundTransparency = 1
+    lt.Text = "Initializing Systems..."
+    lt.TextColor3 = Color3.fromRGB(160, 160, 180)
+    lt.TextSize = 12
+    lt.Font = Enum.Font.GothamMedium
+    lt.TextTransparency = 1
+    lt.ZIndex = 502
+    lt.Parent = centerBox
+
+    -- Loading Percentage Text
+    local lp = Instance.new("TextLabel")
+    lp.Size = UDim2.new(1, 0, 0, 18)
+    lp.AnchorPoint = Vector2.new(0.5, 0)
+    lp.Position = UDim2.new(0.5, 0, 0, 292)
+    lp.BackgroundTransparency = 1
+    lp.Text = "0%"
+    lp.TextColor3 = CFG.AccentColor
+    lp.TextSize = 12
+    lp.Font = Enum.Font.GothamBold
+    lp.TextTransparency = 1
+    lp.ZIndex = 502
+    lp.Parent = centerBox
+
+    -- Main Hub Container
+    MainFrame = Instance.new("Frame")
+    MainFrame.Size = UDim2.new(0, 460, 0, 520)
+    MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(11, 12, 17)
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Visible = false
+    MainFrame.ZIndex = 200
+    MainFrame.Parent = ScreenGui
+    MkCorner(MainFrame, 12)
+    MkStroke(MainFrame, Color3.fromRGB(38, 42, 58), 1.5)
+
+    uiScale = Instance.new("UIScale")
+    uiScale.Scale = 1.0
+    uiScale.Parent = MainFrame
+
+    -- Silky Smooth Intro Sequence
+    task.spawn(function()
+        task.wait(0.2)
+        TweenService:Create(logo, TweenInfo.new(0.6, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {ImageTransparency = 0}):Play()
+        TweenService:Create(tt, TweenInfo.new(0.6, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
+        TweenService:Create(st, TweenInfo.new(0.6, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
+        TweenService:Create(lbg, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
+        TweenService:Create(lfl, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {BackgroundTransparency = 0}):Play()
+        TweenService:Create(lt, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
+        TweenService:Create(lp, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
+
+        local stages = {
+            {p = 0.25, t = "Connecting Remotes & Modules..."},
+            {p = 0.55, t = "Initializing Ballistics & Precision Aim..."},
+            {p = 0.85, t = "Rendering High-Precision ESP..."},
+            {p = 1.00, t = "System Ready! Press RightShift to Open"}
+        }
+
+        for _, s in ipairs(stages) do
+            TweenService:Create(lfl, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = UDim2.new(s.p, 0, 1, 0)}):Play()
+            lt.Text = s.t
+            lp.Text = math.floor(s.p * 100) .. "%"
+            task.wait(0.38)
+        end
+
+        task.wait(0.35)
+        TweenService:Create(logo, TweenInfo.new(0.35), {ImageTransparency = 1}):Play()
+        TweenService:Create(tt, TweenInfo.new(0.35), {TextTransparency = 1}):Play()
+        TweenService:Create(st, TweenInfo.new(0.35), {TextTransparency = 1}):Play()
+        TweenService:Create(lbg, TweenInfo.new(0.35), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(lfl, TweenInfo.new(0.35), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(lt, TweenInfo.new(0.35), {TextTransparency = 1}):Play()
+        TweenService:Create(lp, TweenInfo.new(0.35), {TextTransparency = 1}):Play()
+        local bgTw = TweenService:Create(IF, TweenInfo.new(0.40, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {BackgroundTransparency = 1})
+        bgTw:Play()
+        bgTw.Completed:Wait()
+        IF:Destroy()
+
+        introComplete = true
+        ToggleGUI()
+    end)
+
+    -- Dragging Logic
+    local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
+    MainFrame.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = i.Position
+            startPos = MainFrame.Position
+            i.Changed:Connect(function()
+                if i.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    MainFrame.InputChanged:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseMovement then dragInput = i end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if i == dragInput and dragging then
+            local delta = i.Position - dragStart
+            MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    -- Header
+    local hdr = Instance.new("Frame")
+    hdr.Size = UDim2.new(1, 0, 0, 46)
+    hdr.BackgroundTransparency = 1
+    hdr.BorderSizePixel = 0
+    hdr.Parent = MainFrame
+
+    local hLogo = Instance.new("ImageLabel")
+    hLogo.Size = UDim2.new(0, 26, 0, 26)
+    hLogo.Position = UDim2.new(0, 14, 0.5, -13)
+    hLogo.BackgroundTransparency = 1
+    hLogo.Image = LogoAssetId or ""
+    hLogo.ScaleType = Enum.ScaleType.Fit
+    hLogo.Parent = hdr
+    MkCorner(hLogo, 6)
+
+    local hTitle = Instance.new("TextLabel")
+    hTitle.Size = UDim2.new(0, 120, 0, 20)
+    hTitle.Position = UDim2.new(0, 48, 0.5, -10)
+    hTitle.BackgroundTransparency = 1
+    hTitle.Text = "SECRIT--SCRIPT"
+    hTitle.TextColor3 = Color3.fromRGB(250, 250, 255)
+    hTitle.TextSize = 13
+    hTitle.Font = Enum.Font.GothamBold
+    hTitle.TextXAlignment = Enum.TextXAlignment.Left
+    hTitle.Parent = hdr
+
+    -- Hub Badge Pill
+    local badge = Instance.new("Frame")
+    badge.Size = UDim2.new(0, 88, 0, 20)
+    badge.Position = UDim2.new(0, 160, 0.5, -10)
+    badge.BackgroundColor3 = CFG.AccentColor
+    badge.BackgroundTransparency = 0.85
+    badge.BorderSizePixel = 0
+    badge.Parent = hdr
+    MkCorner(badge, 10)
+    MkStroke(badge, CFG.AccentColor, 1)
+
+    local bLbl = Instance.new("TextLabel")
+    bLbl.Size = UDim2.new(1, 0, 1, 0)
+    bLbl.BackgroundTransparency = 1
+    bLbl.Text = "CRIMINAL HUB V7"
+    bLbl.TextColor3 = CFG.AccentColor
+    bLbl.TextSize = 10
+    bLbl.Font = Enum.Font.GothamBold
+    bLbl.Parent = badge
+
+    -- Live FPS & Ping Badges (Real-Time Performance Monitor)
+    local fpsBadge = Instance.new("Frame")
+    fpsBadge.Size = UDim2.new(0, 56, 0, 20)
+    fpsBadge.Position = UDim2.new(1, -164, 0.5, -10)
+    fpsBadge.BackgroundColor3 = Color3.fromRGB(18, 20, 32)
+    fpsBadge.BorderSizePixel = 0
+    fpsBadge.Parent = hdr
+    MkCorner(fpsBadge, 6)
+    MkStroke(fpsBadge, Color3.fromRGB(36, 40, 56), 1)
+
+    local fpsLbl = Instance.new("TextLabel")
+    fpsLbl.Size = UDim2.new(1, 0, 1, 0)
+    fpsLbl.BackgroundTransparency = 1
+    fpsLbl.Text = "60 FPS"
+    fpsLbl.TextColor3 = Color3.fromRGB(70, 220, 120)
+    fpsLbl.TextSize = 10
+    fpsLbl.Font = Enum.Font.GothamBold
+    fpsLbl.Parent = fpsBadge
+
+    local pingBadge = Instance.new("Frame")
+    pingBadge.Size = UDim2.new(0, 58, 0, 20)
+    pingBadge.Position = UDim2.new(1, -102, 0.5, -10)
+    pingBadge.BackgroundColor3 = Color3.fromRGB(18, 20, 32)
+    pingBadge.BorderSizePixel = 0
+    pingBadge.Parent = hdr
+    MkCorner(pingBadge, 6)
+    MkStroke(pingBadge, Color3.fromRGB(36, 40, 56), 1)
+
+    local pingLbl = Instance.new("TextLabel")
+    pingLbl.Size = UDim2.new(1, 0, 1, 0)
+    pingLbl.BackgroundTransparency = 1
+    pingLbl.Text = "35 ms"
+    pingLbl.TextColor3 = Color3.fromRGB(70, 220, 120)
+    pingLbl.TextSize = 10
+    pingLbl.Font = Enum.Font.GothamBold
+    pingLbl.Parent = pingBadge
+
+    -- Live Performance Update Loop
+    local fpsCount = 60
+    local framesCount = 0
+    local lastFpsTime = tick()
+
+    local function GetPlayerPing()
+        local p = 0
+        pcall(function()
+            p = LocalPlayer:GetNetworkPing() * 1000
+        end)
+        if not p or p <= 0 then
+            pcall(function()
+                local pingStat = game:GetService("Stats").Network.ServerStatsItem:FindFirstChild("Data Ping")
+                if pingStat then
+                    p = pingStat:GetValue()
+                end
+            end)
+        end
+        return math.clamp(math.floor(p > 0 and p or 35), 1, 999)
+    end
+
+    RunService.RenderStepped:Connect(function()
+        framesCount = framesCount + 1
+        local now = tick()
+        if now - lastFpsTime >= 0.5 then
+            fpsCount = math.floor(framesCount / (now - lastFpsTime))
+            framesCount = 0
+            lastFpsTime = now
+
+            if fpsLbl and fpsLbl.Parent then
+                fpsLbl.Text = tostring(fpsCount) .. " FPS"
+                if fpsCount >= 50 then
+                    fpsLbl.TextColor3 = Color3.fromRGB(70, 220, 120)
+                elseif fpsCount >= 30 then
+                    fpsLbl.TextColor3 = Color3.fromRGB(255, 183, 77)
+                else
+                    fpsLbl.TextColor3 = Color3.fromRGB(255, 82, 82)
+                end
+            end
+
+            if pingLbl and pingLbl.Parent then
+                local ping = GetPlayerPing()
+                pingLbl.Text = tostring(ping) .. " ms"
+                if ping <= 70 then
+                    pingLbl.TextColor3 = Color3.fromRGB(70, 220, 120)
+                elseif ping <= 140 then
+                    pingLbl.TextColor3 = Color3.fromRGB(255, 183, 77)
+                else
+                    pingLbl.TextColor3 = Color3.fromRGB(255, 82, 82)
+                end
+            end
+        end
+    end)
+
+    -- Close Button
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 28, 0, 28)
+    closeBtn.Position = UDim2.new(1, -38, 0.5, -14)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(24, 26, 38)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "✕"
+    closeBtn.TextColor3 = Color3.fromRGB(180, 185, 205)
+    closeBtn.TextSize = 13
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.Parent = hdr
+    MkCorner(closeBtn, 7)
+    MkStroke(closeBtn, Color3.fromRGB(36, 40, 56), 1)
+
+    closeBtn.MouseEnter:Connect(function()
+        TweenService:Create(closeBtn, TweenInfo.new(0.15), {
+            BackgroundColor3 = Color3.fromRGB(225, 29, 72),
+            TextColor3 = Color3.new(1, 1, 1)
+        }):Play()
+    end)
+    closeBtn.MouseLeave:Connect(function()
+        TweenService:Create(closeBtn, TweenInfo.new(0.15), {
+            BackgroundColor3 = Color3.fromRGB(24, 26, 38),
+            TextColor3 = Color3.fromRGB(180, 185, 205)
+        }):Play()
+    end)
+    closeBtn.MouseButton1Click:Connect(function()
+        ToggleGUI()
+    end)
+
+    -- Divider Line
+    local hDiv = Instance.new("Frame")
+    hDiv.Size = UDim2.new(1, -28, 0, 1)
+    hDiv.Position = UDim2.new(0, 14, 0, 46)
+    hDiv.BackgroundColor3 = Color3.fromRGB(26, 28, 40)
+    hDiv.BorderSizePixel = 0
+    hDiv.Parent = MainFrame
+
+    -- Floating Tab Bar Capsule
+    local tabs = {"Aimbot", "Combat", "ESP", "Extras"}
+    local tb = Instance.new("Frame")
+    tb.Size = UDim2.new(1, -28, 0, 36)
+    tb.Position = UDim2.new(0, 14, 0, 54)
+    tb.BackgroundColor3 = Color3.fromRGB(16, 17, 25)
+    tb.BorderSizePixel = 0
+    tb.Parent = MainFrame
+    MkCorner(tb, 8)
+    MkStroke(tb, Color3.fromRGB(28, 31, 44), 1)
+
+    local tbLay = Instance.new("UIListLayout")
+    tbLay.FillDirection = Enum.FillDirection.Horizontal
+    tbLay.Padding = UDim.new(0, 4)
+    tbLay.Parent = tb
+
+    local tbPad = Instance.new("UIPadding")
+    tbPad.PaddingLeft = UDim.new(0, 4)
+    tbPad.PaddingRight = UDim.new(0, 4)
+    tbPad.PaddingTop = UDim.new(0, 4)
+    tbPad.PaddingBottom = UDim.new(0, 4)
+    tbPad.Parent = tb
+
+    local tBtns, tPages = {}, {}
+    local tabWidth = (424 - (#tabs - 1) * 4) / #tabs
+
+    for _, nm in ipairs(tabs) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(0, tabWidth, 1, 0)
+        btn.BackgroundColor3 = nm == selectedTab and CFG.AccentColor or Color3.fromRGB(16, 17, 25)
+        btn.BackgroundTransparency = nm == selectedTab and 0 or 1
+        btn.BorderSizePixel = 0
+        btn.Text = nm
+        btn.TextColor3 = nm == selectedTab and Color3.new(1, 1, 1) or Color3.fromRGB(150, 155, 175)
+        btn.TextSize = 11
+        btn.Font = Enum.Font.GothamBold
+        btn.Parent = tb
+        MkCorner(btn, 6)
+        tBtns[nm] = btn
+
+        btn.MouseButton1Click:Connect(function()
+            selectedTab = nm
+            for n, b in pairs(tBtns) do
+                local a = n == selectedTab
+                TweenService:Create(b, TweenInfo.new(0.15), {
+                    BackgroundColor3 = a and CFG.AccentColor or Color3.fromRGB(16, 17, 25),
+                    BackgroundTransparency = a and 0 or 1,
+                    TextColor3 = a and Color3.new(1, 1, 1) or Color3.fromRGB(150, 155, 175)
+                }):Play()
+            end
+            for n, p in pairs(tPages) do
+                p.Visible = n == selectedTab
+            end
+        end)
+    end
+
+    -- Tab Pages Container
+    local ca = Instance.new("Frame")
+    ca.Size = UDim2.new(1, -28, 1, -104)
+    ca.Position = UDim2.new(0, 14, 0, 96)
+    ca.BackgroundTransparency = 1
+    ca.ClipsDescendants = true
+    ca.Parent = MainFrame
+
+    for _, nm in ipairs(tabs) do
+        local pg = Instance.new("ScrollingFrame")
+        pg.Size = UDim2.new(1, 0, 1, 0)
+        pg.BackgroundTransparency = 1
+        pg.BorderSizePixel = 0
+        pg.ScrollBarThickness = 3
+        pg.ScrollBarImageColor3 = CFG.AccentColor
+        pg.CanvasSize = UDim2.new(0, 0, 0, 0)
+        pg.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        pg.Visible = nm == selectedTab
+        pg.Parent = ca
+
+        local lay = Instance.new("UIListLayout")
+        lay.Padding = UDim.new(0, 6)
+        lay.SortOrder = Enum.SortOrder.LayoutOrder
+        lay.Parent = pg
+
+        local pad = Instance.new("UIPadding")
+        pad.PaddingLeft = UDim.new(0, 2)
+        pad.PaddingRight = UDim.new(0, 4)
+        pad.PaddingTop = UDim.new(0, 4)
+        pad.PaddingBottom = UDim.new(0, 8)
+        pad.Parent = pg
+
+        tPages[nm] = pg
+    end
+
+    -- ── Aimbot Tab ──
+    MkToggle(tPages["Aimbot"], "Enable Aimbot", CFG.AimbotEnabled, function(v) CFG.AimbotEnabled = v end)
+    MkDropdown(tPages["Aimbot"], "Aimbot Mode (نمط الإيم)", {"Camera Lock"}, CFG.AimbotMode, function(v) CFG.AimbotMode = v end)
+    MkDropdown(tPages["Aimbot"], "Target Body Part (مكان الإصابة)", {"Head", "Upper Body", "HumanoidRootPart", "Arms", "Legs", "Random"}, CFG.AimbotBone, function(v) CFG.AimbotBone = v end)
+    MkDropdown(tPages["Aimbot"], "Trigger Key/Click (طريقة التفعيل)", {"Shoot Or Aim", "Shoot Only", "Aim Only", "Always Active"}, CFG.AimbotTrigger, function(v) CFG.AimbotTrigger = v end)
+    MkToggle(tPages["Aimbot"], "Smart Wall Check (فحص الجدران الذكي)", CFG.AimbotWallCheck, function(v) CFG.AimbotWallCheck = v end)
+    MkToggle(tPages["Aimbot"], "Auto-Switch Targets (تبديل فوري عند القتل)", CFG.AimbotAutoSwitch, function(v) CFG.AimbotAutoSwitch = v end)
+    MkToggle(tPages["Aimbot"], "Instant Snap on Shoot (قفل فوري مباشر عند الإطلاق)", CFG.SnapOnShoot, function(v) CFG.SnapOnShoot = v end)
+    MkFOVButtons(tPages["Aimbot"])
+    MkSlider(tPages["Aimbot"], "FOV Circle Radius", 30, 350, CFG.AimbotFOV, function(v) CFG.AimbotFOV = v end)
+    MkSlider(tPages["Aimbot"], "Aim Smoothness (نعومة القفل)", 1, 25, CFG.AimbotSmooth, function(v) CFG.AimbotSmooth = v end)
+    MkSlider(tPages["Aimbot"], "Head Height (تعديل ارتفاع الرأس)", -10, 10, -3, function(v) CFG.AimVerticalOffset = v / 10 end)
+    MkSlider(tPages["Aimbot"], "Max Distance (المدى)", 100, 2000, CFG.AimbotMaxDist, function(v) CFG.AimbotMaxDist = v end)
+    MkToggle(tPages["Aimbot"], "Show FOV Circle (Blue)", CFG.ShowFOVCircle, function(v) CFG.ShowFOVCircle = v end)
+    MkToggle(tPages["Aimbot"], "Purple Crosshair (الكروس هير)", CFG.CustomCrosshair, function(v)
+        CFG.CustomCrosshair = v
+        if crosshairFrame then crosshairFrame.Visible = v end
+    end)
+    MkSlider(tPages["Aimbot"], "Crosshair Size (حجم الكروس هير)", 10, 32, CFG.CrosshairSize, function(v)
+        CFG.CrosshairSize = v
+        if crosshairFrame then crosshairFrame.Size = UDim2.new(0, v, 0, v) end
+    end)
+    MkToggle(tPages["Aimbot"], "Sticky Target Lock", CFG.AimbotStickyLock, function(v) CFG.AimbotStickyLock = v end)
+    MkToggle(tPages["Aimbot"], "Movement Prediction (Hitscan: Off)", CFG.AimbotPrediction, function(v) CFG.AimbotPrediction = v end)
+    MkToggle(tPages["Aimbot"], "Target Bots (BPBot)", CFG.AimbotTargetBots, function(v) CFG.AimbotTargetBots = v end)
+    MkToggle(tPages["Aimbot"], "Team Check", CFG.AimbotTeamCheck, function(v) CFG.AimbotTeamCheck = v end)
+
+
+    -- ── Combat Tab ──
+    local cInfo = Instance.new("Frame")
+    cInfo.Size = UDim2.new(1, 0, 0, 88)
+    cInfo.BackgroundColor3 = Color3.fromRGB(18, 19, 28)
+    cInfo.BorderSizePixel = 0
+    cInfo.Parent = tPages["Combat"]
+    MkCorner(cInfo, 8)
+    MkStroke(cInfo, Color3.fromRGB(30, 33, 46), 1)
+
+    local cLbl = Instance.new("TextLabel")
+    cLbl.Size = UDim2.new(1, -16, 1, -12)
+    cLbl.Position = UDim2.new(0, 8, 0, 6)
+    cLbl.BackgroundTransparency = 1
+    cLbl.Text = "⚡ SILENT BALLISTICS & LASER ACCURACY\n• Silent + Camera: Camera tracks target head while 100% of bullets hit\n• No Recoil & Zero Spread: Pinpoint laser accuracy with zero deviation\n• Spinbot & Anti-Aim: Rotates character at high speed to dodge incoming bullets"
+    cLbl.TextColor3 = Color3.fromRGB(215, 215, 235)
+    cLbl.TextSize = 11
+    cLbl.Font = Enum.Font.GothamMedium
+    cLbl.TextWrapped = true
+    cLbl.TextXAlignment = Enum.TextXAlignment.Left
+    cLbl.Parent = cInfo
+
+    MkToggle(tPages["Combat"], "No Recoil (إلغاء ارتداد السلاح نهائياً)", CFG.NoRecoil, function(v)
+        CFG.NoRecoil = v
+        ApplyNoRecoil(v or CFG.ZeroSpread)
+    end)
+    MkToggle(tPages["Combat"], "Zero Spread (إلغاء انتشار الرصاص - ليزر)", CFG.ZeroSpread, function(v)
+        CFG.ZeroSpread = v
+        ApplyNoRecoil(v or CFG.NoRecoil)
+    end)
+    MkToggle(tPages["Combat"], "Wallbang (اختراق الجدران والعوائق)", CFG.Wallbang, function(v)
+        CFG.Wallbang = v
+    end)
+    MkToggle(tPages["Combat"], "No Camera Shake (إلغاء اهتزاز الكاميرا عند الجري)", CFG.NoCameraBob, function(v)
+        CFG.NoCameraBob = v
+    end)
+    MkToggle(tPages["Combat"], "Quick Reload (كويك ريلود - تعبئة سريعة)", CFG.FastReload, function(v)
+        CFG.FastReload = v
+    end)
+    MkSlider(tPages["Combat"], "Reload Speed Multiplier (سرعة التعبئة)", 1, 5, CFG.ReloadSpeed, function(v)
+        CFG.ReloadSpeed = v
+    end)
+    MkToggle(tPages["Combat"], "Auto Triggerbot (إطلاق نار تلقائي)", CFG.Triggerbot, function(v)
+        CFG.Triggerbot = v
+    end)
+    MkSlider(tPages["Combat"], "Triggerbot Delay (ms)", 0, 150, CFG.TriggerbotDelay, function(v)
+        CFG.TriggerbotDelay = v
+    end)
+    MkToggle(tPages["Combat"], "Spinbot (دوران سريع لتفادي الرصاص)", CFG.SpinBot, function(v)
+        CFG.SpinBot = v
+    end)
+    MkSlider(tPages["Combat"], "Spinbot Speed", 10, 80, CFG.SpinSpeed, function(v)
+        CFG.SpinSpeed = v
+    end)
+
+    -- ── ESP Tab ──
+    MkToggle(tPages["ESP"], "Enable ESP", CFG.ESPEnabled, function(v) CFG.ESPEnabled = v end)
+    MkToggle(tPages["ESP"], "Chams / Wallhack (توهج عبر الجدران)", CFG.ChamsESP, function(v) CFG.ChamsESP = v end)
+    MkToggle(tPages["ESP"], "⭐ Wanted Players Only (نجوم فقط)", CFG.ESPWantedOnly, function(v) CFG.ESPWantedOnly = v end)
+    MkSlider(tPages["ESP"], "Max Distance (مسافة الرؤية)", 500, 2000, CFG.ESPMaxDist, function(v) CFG.ESPMaxDist = v end)
+    MkToggle(tPages["ESP"], "Team Check (Hide Friendlies)", CFG.ESPTeamCheck, function(v) CFG.ESPTeamCheck = v end)
+    MkToggle(tPages["ESP"], "Health Bars (شريط دم أفقي)", CFG.HealthBarESP, function(v) CFG.HealthBarESP = v end)
+    MkToggle(tPages["ESP"], "Player Names & Stars", CFG.NamesESP, function(v) CFG.NamesESP = v end)
+    MkToggle(tPages["ESP"], "Distance Indicator (المسافة)", CFG.DistanceESP, function(v) CFG.DistanceESP = v end)
+    MkToggle(tPages["ESP"], "Box 2D ESP", CFG.BoxESP, function(v) CFG.BoxESP = v end)
+    MkToggle(tPages["ESP"], "Snapline Tracers", CFG.TracersESP, function(v) CFG.TracersESP = v end)
+    MkToggle(tPages["ESP"], "Skeleton ESP (Low FPS Impact)", CFG.SkeletonESP, function(v) CFG.SkeletonESP = v end)
+    MkToggle(tPages["ESP"], "Include Bots", CFG.ESPTargetBots, function(v) CFG.ESPTargetBots = v end)
+
+    -- ── Extras Tab ──
+    MkToggle(tPages["Extras"], "Anti-Handcuffs (Auto-Break)", CFG.AntiHandcuffs, function(v) CFG.AntiHandcuffs = v end)
+    MkToggle(tPages["Extras"], "Anti-Tase (Auto-Cleanse)", CFG.AntiTase, function(v) CFG.AntiTase = v end)
+    MkToggle(tPages["Extras"], "Speed Boost", CFG.SpeedBoost, function(v) CFG.SpeedBoost = v end)
+    MkSlider(tPages["Extras"], "WalkSpeed", 16, 80, CFG.SpeedValue, function(v) CFG.SpeedValue = v end)
+end
+
+-- ══════════════════════════════════════════════════════
+-- INITIALIZATION
+-- ══════════════════════════════════════════════════════
+BuildGUI()
+SetupFOV()
+ApplyNoRecoil(CFG.NoRecoil or CFG.ZeroSpread)
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.RightShift then
+        ToggleGUI()
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    pcall(function()
+        local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        if fovCircle then
+            fovCircle.Position = center
+            fovCircle.Radius = CFG.AimbotFOV
+            fovCircle.Color = CFG.FOVCircleColor
+            fovCircle.Visible = CFG.AimbotEnabled and CFG.ShowFOVCircle and introComplete
+        end
+
+        local showCH = CFG.CustomCrosshair and introComplete
+        if chVOut and chHOut and chVCore and chHCore then
+            chVOut.Visible = showCH
+            chHOut.Visible = showCH
+            chVCore.Visible = showCH
+            chHCore.Visible = showCH
+
+            if showCH then
+                local cx = math.floor(center.X)
+                local cy = math.floor(center.Y)
+                local S = math.floor(CFG.CrosshairSize or 14)
+                if S % 2 ~= 0 then S = S + 1 end
+                local half = math.floor(S / 2)
+
+                chVOut.Position = Vector2.new(cx - 2, cy - half)
+                chVOut.Size = Vector2.new(4, S)
+
+                chHOut.Position = Vector2.new(cx - half, cy - 2)
+                chHOut.Size = Vector2.new(S, 4)
+
+                chVCore.Position = Vector2.new(cx - 1, cy - half + 1)
+                chVCore.Size = Vector2.new(2, S - 2)
+
+                chHCore.Position = Vector2.new(cx - half + 1, cy - 1)
+                chHCore.Size = Vector2.new(S - 2, 2)
+            end
+        end
+
+        if crosshairFrame then
+            crosshairFrame.Visible = showCH
+        end
+
+        pcall(function()
+            for anim, _ in pairs(hookedAnimators) do
+                if anim and anim.Parent then
+                    for _, track in ipairs(anim:GetPlayingAnimationTracks()) do
+                        if CFG.FastReload and IsReloadTrack(track) then
+                            local speed = math.clamp(CFG.ReloadSpeed or 1.35, 1, 5)
+                            if track.Speed ~= speed then
+                                track:AdjustSpeed(speed)
+                            end
+                        end
+                        if CFG.NoRecoil and IsFireTrack(track) then
+                            track:AdjustWeight(0.001)
+                        end
+                    end
+                else
+                    hookedAnimators[anim] = nil
+                end
+            end
+        end)
+    end)
+end)
+
+-- Highest priority RenderStep binding: Runs AFTER GunController ViewModel & Recoil
+RunService:BindToRenderStep("SecritAimbotLock", Enum.RenderPriority.Last.Value, function()
+    pcall(function()
+        AimbotTick()
+        TriggerbotTick()
+    end)
+end)
+
+RunService.Heartbeat:Connect(function()
+    pcall(function()
+        if introComplete then
+            ESPLoop()
+            if CFG.SpinBot and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                local root = LocalPlayer.Character.HumanoidRootPart
+                root.CFrame = root.CFrame * CFrame.Angles(0, math.rad(CFG.SpinSpeed or 35), 0)
+            end
+            hookTicker = (hookTicker or 0) + 1
+            if hookTicker % 90 == 0 then
+                HookGuns()
+                ApplyNoRecoil(CFG.NoRecoil or CFG.ZeroSpread)
+            end
+            reloadTicker = (reloadTicker or 0) + 1
+            if reloadTicker % 30 == 0 then
+                ScanAndHookAnimators()
+            end
+            CrimFeatures()
+        end
+    end)
+end)
